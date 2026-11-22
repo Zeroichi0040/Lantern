@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lantern</title>
+<style>
+:root{
+  --bg:#0e1013;--panel:#15181d;--panel2:#1b1f26;--line:#252a33;--text:#e7e9ec;--muted:#8b929d;
+  --accent:#f2b84b;--accent-ink:#1a1405;--user:#1d232c;--ok:#6fcf97;--bad:#ef6a6a;--warn:#f2b84b;
+  --code:#0a0c0f;--radius:12px;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme:light){
+  :root{--bg:#f6f4ef;--panel:#fffdf9;--panel2:#f0ede6;--line:#e2ded5;--text:#1d1f23;--muted:#6d727b;
+    --accent:#c98a10;--accent-ink:#fff;--user:#ece8de;--code:#f1eee7}
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:15px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+#app{display:grid;grid-template-columns:320px 1fr;height:100%}
+
+/* sidebar */
+#side{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
+.side-scroll{overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px;flex:1}
+.brand{display:flex;align-items:center;gap:10px;font-weight:650;font-size:18px;letter-spacing:.2px}
+.brand .dot{width:12px;height:12px;border-radius:50%;background:var(--accent);box-shadow:0 0 14px var(--accent)}
+.brand small{color:var(--muted);font-weight:400;font-size:12px;margin-left:auto}
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:var(--radius);padding:12px;display:flex;flex-direction:column;gap:10px}
+.card>summary,.card h3{margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:600;cursor:default}
+details.card>summary{cursor:pointer}
+.row{display:flex;gap:8px;align-items:center}
+.row>*{min-width:0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+label .val{float:right;color:var(--text);font-variant-numeric:tabular-nums}
+input[type=number],select,textarea,input[type=text]{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;width:100%;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+input[type=range]{accent-color:var(--accent);width:100%}
+textarea{resize:vertical}
+.btn{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 12px}
+.btn:hover{border-color:var(--muted)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:600}
+.btn.icon{padding:7px 10px;flex:none}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:3px;gap:3px}
+.seg button{border:0;background:none;border-radius:6px;padding:5px;color:var(--muted)}
+.seg button.on{background:var(--panel2);color:var(--text);box-shadow:0 0 0 1px var(--line)}
+.pill{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.pill i{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none}
+.pill.ready i{background:var(--ok)}
+.pill.loading i{background:var(--warn);animation:pulse 1s infinite}
+.pill.crashed i,.pill.offline i{background:var(--bad)}
+@keyframes pulse{50%{opacity:.25}}
+.hint{font-size:12px;color:var(--muted);word-break:break-word}
+.hint pre{max-height:140px;overflow:auto;background:var(--code);padding:8px;border-radius:8px;font:11px/1.4 var(--mono);white-space:pre-wrap;margin:6px 0 0}
+.hint code{font-family:var(--mono)}
+
+/* conversations */
+.convs-head{display:flex;align-items:center;justify-content:space-between}
+.convs-head h3{margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)}
+#convs{display:flex;flex-direction:column;gap:2px}
+.conv{display:flex;align-items:center;gap:6px;padding:7px 9px;border-radius:8px;cursor:pointer;color:var(--muted)}
+.conv:hover{background:var(--panel2)}
+.conv.on{background:var(--panel2);color:var(--text);box-shadow:inset 2px 0 var(--accent)}
+.conv span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conv button{border:0;background:none;color:var(--muted);opacity:0;padding:0 4px;font-size:16px}
+.conv:hover button{opacity:1}
+.conv button:hover{color:var(--bad)}
+
+/* main */
+main{display:flex;flex-direction:column;min-width:0;height:100%}
+.top{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);min-height:52px}
+.top #title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+#menu{display:none}
+#chat{flex:1;overflow-y:auto;padding:20px 16px 8px;scroll-behavior:auto}
+.wrap{max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+#empty{max-width:520px;margin:12vh auto 0;text-align:center;color:var(--muted)}
+#empty h1{color:var(--text);font-size:26px;margin:0 0 8px}
+.msg{display:flex;flex-direction:column;gap:6px}
+.msg .role{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px}
+.msg.user .body{background:var(--user);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;white-space:pre-wrap;word-break:break-word;align-self:flex-start;max-width:100%}
+.msg .body>*:first-child{margin-top:0}.msg .body>*:last-child{margin-bottom:0}
+.msg .body p{margin:.6em 0}
+.msg .body h1,.msg .body h2,.msg .body h3,.msg .body h4{margin:1em 0 .4em;line-height:1.25}
+.msg .body h1{font-size:1.4em}.msg .body h2{font-size:1.25em}.msg .body h3{font-size:1.1em}
+.msg .body ul,.msg .body ol{padding-left:1.4em;margin:.5em 0}
+.msg .body blockquote{margin:.6em 0;padding:.1em 1em;border-left:3px solid var(--line);color:var(--muted)}
+.msg .body hr{border:0;border-top:1px solid var(--line);margin:1em 0}
+.msg .body a{color:var(--accent)}
+.msg .body code{font-family:var(--mono);font-size:.88em;background:var(--panel2);padding:.1em .35em;border-radius:5px}
+.codeblock{position:relative;margin:.7em 0}
+.codeblock pre{margin:0;background:var(--code);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto}
+.codeblock pre code{background:none;padding:0;font-size:13px;line-height:1.5}
+.codeblock .lang{position:absolute;top:6px;left:12px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+.codeblock pre{padding-top:24px}
+.codecopy{position:absolute;top:4px;right:6px;border:0;background:none;color:var(--muted);font-size:12px}
+.codecopy:hover{color:var(--text)}
+details.think{border:1px dashed var(--line);border-radius:10px;padding:6px 12px;color:var(--muted);font-size:13px}
+details.think summary{cursor:pointer;user-select:none}
+details.think .think-body{white-space:pre-wrap;margin-top:6px;max-height:320px;overflow:auto}
+.msg .meta{display:flex;gap:12px;align-items:center;font-size:12px;color:var(--muted)}
+.link{border:0;background:none;color:var(--muted);padding:0;font-size:12px}
+.link:hover{color:var(--text)}
+.err{color:var(--bad);font-size:13px;white-space:pre-wrap}
+.cursor::after{content:"▍";color:var(--accent);animation:pulse 1s infinite;margin-left:1px}
+
+/* composer */
+#composer{padding:8px 16px 16px}
+.box{max-width:820px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
+.box:focus-within{border-color:var(--accent)}
+#input{border:0;background:none;resize:none;max-height:220px;padding:6px 4px;outline:none}
+.tools{display:flex;align-items:center;gap:8px}
+.chip{border:1px solid var(--line);background:none;border-radius:999px;padding:3px 11px;font-size:12px;color:var(--muted)}
+.chip.on{color:var(--accent);border-color:var(--accent)}
+.tools .grow{flex:1}
+.tools .hintkey{font-size:11px;color:var(--muted)}
+#send{border:0;background:var(--accent);color:var(--accent-ink);border-radius:9px;padding:6px 16px;font-weight:600}
+#send.stop{background:var(--bad);color:#fff}
+#send:disabled{opacity:.4;cursor:not-allowed}
+
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:8px 14px;border-radius:10px;opacity:0;pointer-events:none;transition:opacity .2s;font-size:13px;z-index:50}
+#toast.show{opacity:1}
+
+@media (max-width:820px){
+  #app{grid-template-columns:1fr}
+  #side{position:fixed;inset:0 auto 0 0;width:min(340px,88vw);z-index:20;transform:translateX(-100%);transition:transform .2s}
+  #app.open #side{transform:none;box-shadow:0 0 0 100vmax rgba(0,0,0,.5)}
+  #menu{display:inline-block}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <div class="side-scroll">
+      <div class="brand"><span class="dot"></span>Lantern<small id="ver"></small></div>
+
+      <section class="card">
+        <h3>Model</h3>
+        <div class="row">
+          <select id="model" aria-label="Model"></select>
+          <button class="btn icon" id="refresh" title="Rescan models folder" aria-label="Refresh">↻</button>
+        </div>
+        <div class="seg" id="mode" role="group" aria-label="Inference mode">
+          <button data-v="cpu">CPU</button><button data-v="gpu">GPU</button>
+        </div>
+        <div class="grid2">
+          <label>Context<input id="ctx" type="number" min="256" step="256"></label>
+          <label>Threads<input id="threads" type="number" min="1"></label>
+        </div>
+        <div class="row">
+          <button class="btn primary" id="load" style="flex:1">Load model</button>
+          <button class="btn" id="stopModel">Stop</button>
+        </div>
+        <div class="pill" id="pill"><i></i><span></span></div>
+        <div class="hint" id="hint"></div>
+      </section>
+
+      <details class="card" open>
+        <summary>Generation</summary>
+        <label>Temperature <span class="val" id="tempv"></span><input id="temp" type="range" min="0" max="2" step="0.05"></label>
+        <label>Top-p <span class="val" id="topv"></span><input id="top" type="range" min="0.05" max="1" step="0.05"></label>
+        <label>Max output tokens (0 = no limit)<input id="maxtok" type="number" min="0" step="64"></label>
+        <label>System prompt<textarea id="system" rows="3" placeholder="Optional instructions for every chat"></textarea></label>
+      </details>
+
+      <section>
+        <div class="convs-head"><h3>Chats</h3><button class="btn" id="newChat">+ New</button></div>
+        <div id="convs"></div>
+      </section>
+    </div>
+  </aside>
+
+  <main>
+    <header class="top">
+      <button class="btn icon" id="menu" aria-label="Menu">☰</button>
+      <div id="title">New chat</div>
+      <button class="btn" id="export" title="Download this chat as Markdown">Export</button>
+    </header>
+    <div id="chat"><div class="wrap" id="wrap"></div></div>
+    <form id="composer" autocomplete="off">
+      <div class="box">
+        <textarea id="input" rows="1" placeholder="Message your local model…"></textarea>
+        <div class="tools">
+          <button type="button" class="chip" id="think" title="Ask the model to reason before answering (template-dependent)">Thinking</button>
+          <span class="grow"></span>
+          <span class="hintkey">Enter to send · Shift+Enter for newline</span>
+          <button id="send" type="submit">Send</button>
+        </div>
+      </div>
+    </form>
+  </main>
+</div>
+<div id="toast" role="status"></div>
+
+<script>
+(() => {
+"use strict";
+const $ = s => document.querySelector(s);
+const wrap = $("#wrap"), chat = $("#chat"), input = $("#input");
+
+/* ---------- storage ---------- */
+let warnedStorage = false;
+const store = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v){
+    try { localStorage.setItem(k, JSON.stringify(v)); }
+    catch { if (!warnedStorage){ warnedStorage = true; toast("Browser storage is full or blocked; chats won't persist."); } }
+  }
+};
+const defaults = {model:"", mode:"cpu", ctx:4096, threads:4, temp:0.7, top:0.95, maxtok:0, system:"", thinking:true};
+let S = {...defaults, ...store.get("lantern.settings", {})};
+let convs = store.get("lantern.convs", []);
+let activeId = store.get("lantern.active", null);
+let status = {state:"offline"};
+let generating = false, controller = null, threadsTouched = !!store.get("lantern.settings", null);
+
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+const saveS = () => store.set("lantern.settings", S);
+const saveC = () => { store.set("lantern.convs", convs.slice(0, 100)); store.set("lantern.active", activeId); };
+const active = () => convs.find(c => c.id === activeId);
+
+let toastTimer;
+function toast(msg){
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2800);
+}
+
+async function api(path, opts = {}){
+  const o = {method: opts.method || "GET", headers: {}};
+  if (opts.body !== undefined){ o.headers["Content-Type"] = "application/json"; o.body = JSON.stringify(opts.body); }
+  const r = await fetch(path, o);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(errMsg(j) || r.statusText);
+  return j;
+}
+function errMsg(j){ const e = j && j.error; return typeof e === "string" ? e : (e && e.message) || ""; }
+
+/* ---------- markdown (escape first, then format) ---------- */
+const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+function inline(raw){
+  const codes = [];
+  let t = esc(raw).replace(/`([^`\n]+)`/g, (_, c) => { codes.push(c); return "\u0000" + (codes.length - 1) + "\u0000"; });
+  t = t.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+       .replace(/(^|[^*\w])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>")
+       .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  return t.replace(/\u0000(\d+)\u0000/g, (_, i) => "<code>" + codes[+i] + "</code>");
+}
+
+function blocks(text){
+  const lines = text.split("\n"); let out = "", i = 0;
+  const flushPara = buf => { if (buf.length) out += "<p>" + inline(buf.join(" ")) + "</p>"; };
+  let para = [];
+  while (i < lines.length){
+    const ln = lines[i];
+    let m;
+    if (!ln.trim()){ flushPara(para); para = []; i++; continue; }
+    if ((m = ln.match(/^(#{1,4})\s+(.*)$/))){ flushPara(para); para = []; out += `<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`; i++; continue; }
+    if (/^\s*([-*_])\1{2,}\s*$/.test(ln)){ flushPara(para); para = []; out += "<hr>"; i++; continue; }
+    if (/^\s*[-*+]\s+/.test(ln) || /^\s*\d+[.)]\s+/.test(ln)){
+      flushPara(para); para = [];
+      const ordered = /^\s*\d+[.)]\s+/.test(ln), re = ordered ? /^\s*\d+[.)]\s+/ : /^\s*[-*+]\s+/;
+      out += ordered ? "<ol>" : "<ul>";
+      while (i < lines.length && re.test(lines[i])){ out += "<li>" + inline(lines[i].replace(re, "")) + "</li>"; i++; }
+      out += ordered ? "</ol>" : "</ul>"; continue;
+    }
+    if (/^>\s?/.test(ln)){
+      flushPara(para); para = []; const q = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])){ q.push(lines[i].replace(/^>\s?/, "")); i++; }
+      out += "<blockquote>" + inline(q.join(" ")) + "</blockquote>"; continue;
+    }
+    para.push(ln.trim()); i++;
+  }
+  flushPara(para);
+  return out;
+}
+
+function md(src){
+  let out = "", last = 0, m;
+  const re = /```([\w+-]*)[ \t]*\n?([\s\S]*?)(```|$)/g;   // unclosed fence = still streaming
+  while ((m = re.exec(src)) !== null){
+    if (m[0] === "") break;
+    out += blocks(src.slice(last, m.index));
+    out += `<div class="codeblock"><span class="lang">${esc(m[1])}</span><button type="button" class="codecopy">Copy</button><pre><code>${esc(m[2].replace(/\n$/, ""))}</code></pre></div>`;
+    last = m.index + m[0].length;
+  }
+  return out + blocks(src.slice(last));
+}
+
+// Some templates emit <think>…</think> inline instead of a separate reasoning field.
+function view(m){
+  let content = m.content || "", reasoning = m.reasoning || "";
+  if (!reasoning){
+    const t = content.match(/^\s*<think>([\s\S]*?)(<\/think>|$)/);
+    if (t){ reasoning = t[1].trim(); content = content.slice(t[0].length).replace(/^\s+/, ""); }
+  }
+  return {content, reasoning};
+}
+
+/* ---------- rendering ---------- */
+function msgEl(m, isLast){
+  const el = document.createElement("div");
+  el.className = "msg " + m.role;
+  if (m.role === "user"){
+    el.innerHTML = '<div class="role">You</div><div class="body"></div>';
+    el.querySelector(".body").textContent = m.content;
+    return el;
+  }
+  el.innerHTML = '<div class="role">Lantern</div>' +
+    '<details class="think" hidden><summary>Thought process</summary><div class="think-body"></div></details>' +
+    '<div class="body"></div><div class="err" hidden></div>' +
+    '<div class="meta"><span class="stats"></span><button type="button" class="link copy">Copy</button>' +
+    (isLast ? '<button type="button" class="link regen">Regenerate</button>' : "") + "</div>";
+  updateEl(el, m, false);
+  return el;
+}
+
+function updateEl(el, m, live){
+  if (!el || m.role !== "assistant") return;
+  const v = view(m);
+  const think = el.querySelector(".think");
+  think.hidden = !v.reasoning;
+  if (v.reasoning){
+    el.querySelector(".think-body").textContent = v.reasoning;
+    if (live && !v.content) think.open = true;
+    if (live && v.content && !el._collapsed){ think.open = false; el._collapsed = true; }
+  }
+  const body = el.querySelector(".body");
+  body.innerHTML = md(v.content);
+  body.classList.toggle("cursor", !!live);
+  const err = el.querySelector(".err");
+  err.hidden = !m.error; err.textContent = m.error || "";
+  el.querySelector(".stats").textContent = live ? "" : [m.stats, m.stopped ? "stopped" : ""].filter(Boolean).join(" · ");
+}
+
+let raf = 0;
+function schedule(el, m){
+  if (raf) return;
+  raf = requestAnimationFrame(() => {
+    raf = 0;
+    const stick = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 90;
+    updateEl(el, m, true);
+    if (stick) chat.scrollTop = chat.scrollHeight;
+  });
+}
+
+function renderChat(){
+  const c = active();
+  wrap.innerHTML = "";
+  $("#title").textContent = c ? c.title : "New chat";
+  if (!c || !c.messages.length){
+    wrap.innerHTML = '<div id="empty"><h1>Lantern</h1><p>Chat with a model running entirely on your machine. Pick a GGUF model on the left, load it, and say hello.</p></div>';
+    return;
+  }
+  c.messages.forEach((m, i) => wrap.appendChild(msgEl(m, i === c.messages.length - 1)));
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function renderConvs(){
+  const box = $("#convs"); box.innerHTML = "";
+  [...convs].sort((a, b) => b.updated - a.updated).forEach(c => {
+    const d = document.createElement("div");
+    d.className = "conv" + (c.id === activeId ? " on" : "");
+    d.innerHTML = "<span></span><button type=\"button\" title=\"Delete chat\" aria-label=\"Delete chat\">×</button>";
+    d.querySelector("span").textContent = c.title;
+    d.onclick = e => {
+      if (e.target.tagName === "BUTTON"){ delConv(c.id); return; }
+      if (generating) return toast("Stop the current reply first.");
+      activeId = c.id; saveC(); renderConvs(); renderChat(); $("#app").classList.remove("open");
+    };
+    box.appendChild(d);
+  });
+}
+
+function newConv(){
+  const c = {id: uid(), title: "New chat", messages: [], updated: Date.now()};
+  convs.unshift(c); activeId = c.id; saveC(); renderConvs(); renderChat();
+  return c;
+}
+function delConv(id){
+  if (generating && id === activeId) return toast("Stop the current reply first.");
+  convs = convs.filter(c => c.id !== id);
+  if (activeId === id) activeId = convs[0] ? convs[0].id : null;
+  saveC(); renderConvs(); renderChat();
+}
+
+/* ---------- engine panel ---------- */
+const fmtSize = b => b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : (b / 1e6).toFixed(0) + " MB";
+
+async function loadModels(){
+  try {
+    const j = await api("/api/models");
+    const sel = $("#model"); sel.innerHTML = "";
+    if (!j.models.length){
+      sel.innerHTML = "<option value=''>No .gguf models found</option>";
+    } else {
+      j.models.forEach(m => { const o = document.createElement("option"); o.value = m.name; o.textContent = `${m.name} (${fmtSize(m.size)})`; sel.appendChild(o); });
+      if (!j.models.some(m => m.name === S.model)) S.model = j.models[0].name;
+      sel.value = S.model;
+    }
+    saveS();
+  } catch (e) { toast(e.message); }
+}
+
+function renderStatus(){
+  const st = status.state, pill = $("#pill"), hint = $("#hint");
+  pill.className = "pill " + st;
+  const label = {
+    offline: "Backend unreachable",
+    stopped: "No model loaded",
+    loading: `Loading ${status.model || "model"}…`,
+    ready: `Ready · ${status.model} · ${(status.mode || "").toUpperCase()}`,
+    crashed: `Model server exited (code ${status.exit_code})`
+  }[st] || st;
+  pill.querySelector("span").textContent = label;
+  $("#load").disabled = st === "loading" || !S.model;
+  $("#load").textContent = st === "ready" ? "Reload" : "Load model";
+  $("#stopModel").disabled = !(st === "ready" || st === "loading");
+  if (status.version) $("#ver").textContent = "v" + status.version;
+  if (!threadsTouched && status.cpu_count){
+    S.threads = Math.max(1, Math.floor(status.cpu_count / 2)); $("#threads").value = S.threads;
+  }
+  hint.textContent = "";
+  if (st === "crashed" && status.log_tail){
+    const pre = document.createElement("pre"); pre.textContent = status.log_tail;
+    hint.append("Last log lines:", pre);
+  } else if (status.server_found === false){
+    hint.innerHTML = "<b>llama-server</b> not found. Put a llama.cpp build in <code></code> or on your PATH.";
+    hint.querySelector("code").textContent = status.runtime_dir;
+  } else if (st === "stopped" && !$("#model").value){
+    hint.innerHTML = "Drop <code>.gguf</code> files into <code></code>, then press ↻.";
+    hint.querySelectorAll("code")[1].textContent = status.models_dir;
+  }
+  updateSend();
+}
+
+let pollTimer;
+async function poll(){
+  try { status = await api("/api/status"); } catch { status = {state: "offline"}; }
+  renderStatus();
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(poll, status.state === "loading" ? 1000 : 4000);
+}
+
+$("#load").onclick = async () => {
+  try {
+    status = await api("/api/load", {method: "POST", body: {model: S.model, mode: S.mode, ctx: S.ctx, threads: S.threads}});
+    renderStatus(); poll();
+  } catch (e) { toast(e.message); }
+};
+$("#stopModel").onclick = async () => {
+  try { status = await api("/api/stop", {method: "POST", body: {}}); renderStatus(); } catch (e) { toast(e.message); }
+};
+$("#refresh").onclick = loadModels;
+
+/* ---------- generation ---------- */
+function updateSend(){
+  const b = $("#send");
+  b.classList.toggle("stop", generating);
+  b.textContent = generating ? "Stop" : "Send";
+  b.disabled = !generating && !input.value.trim();
+  input.placeholder = status.state === "ready" ? "Message your local model…" : "Load a model to start chatting…";
+}
+
+function chatBody(c){
+  const hist = c.messages.slice(0, -1).map(x => ({role: x.role, content: x.content}));
+  const msgs = (S.system.trim() ? [{role: "system", content: S.system.trim()}] : []).concat(hist);
+  const body = {
+    messages: msgs, stream: true, temperature: S.temp, top_p: S.top,
+    chat_template_kwargs: {enable_thinking: S.thinking},
+    reasoning_format: "deepseek", stream_options: {include_usage: true}
+  };
+  if (S.maxtok > 0) body.max_tokens = S.maxtok;
+  return body;
+}
+
+async function generate(c){
+  const m = {role: "assistant", content: "", reasoning: ""};
+  c.messages.push(m);
+  if (c.title === "New chat"){ const u = c.messages.find(x => x.role === "user"); if (u) c.title = u.content.trim().replace(/\s+/g, " ").slice(0, 48) || "New chat"; }
+  c.updated = Date.now();
+  saveC(); renderConvs(); renderChat();
+  const el = wrap.lastElementChild;
+  generating = true; controller = new AbortController(); updateSend();
+  const t0 = performance.now(); let chunks = 0, timings = null, usage = null;
+
+  try {
+    const r = await fetch("/v1/chat/completions", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(chatBody(c)), signal: controller.signal});
+    if (!r.ok) throw new Error(errMsg(await r.json().catch(() => ({}))) || r.statusText);
+    const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+    for (;;){
+      const {value, done} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream: true});
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0){
+        const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (!data || data === "[DONE]") continue;
+        let j; try { j = JSON.parse(data); } catch { continue; }
+        if (j.error) throw new Error(errMsg(j) || "Model error");
+        const d = j.choices && j.choices[0] && j.choices[0].delta;
+        if (d){
+          if (d.reasoning_content) m.reasoning += d.reasoning_content;
+          if (d.content) m.content += d.content;
+          if (d.reasoning_content || d.content){ chunks++; schedule(el, m); }
+        }
+        if (j.timings) timings = j.timings;
+        if (j.usage) usage = j.usage;
+      }
+    }
+  } catch (e) {
+    if (e.name === "AbortError") m.stopped = true; else m.error = e.message || String(e);
+  } finally {
+    const secs = (performance.now() - t0) / 1000;
+    const n = (usage && usage.completion_tokens) || chunks;
+    const tps = (timings && timings.predicted_per_second) || (secs > 0 ? n / secs : 0);
+    if (n) m.stats = `${n} tokens · ${tps.toFixed(1)} tok/s`;
+    generating = false; controller = null;
+    if (raf){ cancelAnimationFrame(raf); raf = 0; }
+    if (!m.content && !m.reasoning && !m.error){ c.messages.pop(); }
+    c.updated = Date.now(); saveC(); renderConvs(); renderChat(); updateSend();
+  }
+}
+
+async function send(){
+  if (generating) return;
+  const text = input.value.trim();
+  if (!text) return;
+  if (status.state !== "ready") return toast("Load a model first.");
+  const c = active() || newConv();
+  c.messages.push({role: "user", content: text});
+  input.value = ""; autosize();
+  await generate(c);
+}
+
+$("#composer").addEventListener("submit", e => {
+  e.preventDefault();
+  if (generating && controller) controller.abort(); else send();
+});
+input.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing){ e.preventDefault(); if (!generating) send(); }
+});
+function autosize(){ input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 220) + "px"; updateSend(); }
+input.addEventListener("input", autosize);
+
+chat.addEventListener("click", async e => {
+  const t = e.target;
+  if (t.classList.contains("codecopy")){
+    await copy(t.parentElement.querySelector("code").textContent); t.textContent = "Copied"; setTimeout(() => t.textContent = "Copy", 1200);
+  } else if (t.classList.contains("copy")){
+    const c = active(), i = [...wrap.children].indexOf(t.closest(".msg"));
+    if (c && c.messages[i]){ await copy(view(c.messages[i]).content); toast("Copied"); }
+  } else if (t.classList.contains("regen")){
+    const c = active(); if (!c || generating) return;
+    if (status.state !== "ready") return toast("Load a model first.");
+    c.messages.pop(); await generate(c);
+  }
+});
+async function copy(text){
+  try { await navigator.clipboard.writeText(text); }
+  catch { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+}
+
+$("#newChat").onclick = () => { if (generating) return toast("Stop the current reply first."); newConv(); $("#app").classList.remove("open"); input.focus(); };
+$("#menu").onclick = () => $("#app").classList.toggle("open");
+$("#export").onclick = () => {
+  const c = active(); if (!c || !c.messages.length) return toast("Nothing to export yet.");
+  const md = `# ${c.title}\n\n` + c.messages.map(m => `**${m.role === "user" ? "You" : "Assistant"}:**\n\n${view(m).content}\n`).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([md], {type: "text/markdown"}));
+  a.download = (c.title.replace(/[^\w-]+/g, "_").slice(0, 40) || "chat") + ".md";
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
+/* ---------- settings bindings ---------- */
+function bindSettings(){
+  const num = (id, key, parse = Number) => { const el = $("#" + id); el.value = S[key]; el.addEventListener("input", () => { const v = parse(el.value); if (!Number.isNaN(v)){ S[key] = v; saveS(); } }); return el; };
+  num("ctx", "ctx", v => parseInt(v, 10));
+  const th = num("threads", "threads", v => parseInt(v, 10)); th.addEventListener("input", () => threadsTouched = true);
+  num("maxtok", "maxtok", v => parseInt(v, 10) || 0);
+  const temp = $("#temp"), top = $("#top");
+  temp.value = S.temp; top.value = S.top;
+  const sync = () => { $("#tempv").textContent = (+S.temp).toFixed(2); $("#topv").textContent = (+S.top).toFixed(2); };
+  temp.oninput = () => { S.temp = +temp.value; sync(); saveS(); };
+  top.oninput = () => { S.top = +top.value; sync(); saveS(); };
+  sync();
+  const sys = $("#system"); sys.value = S.system; sys.oninput = () => { S.system = sys.value; saveS(); };
+  $("#model").onchange = e => { S.model = e.target.value; saveS(); renderStatus(); };
+  document.querySelectorAll("#mode button").forEach(b => {
+    b.onclick = () => { S.mode = b.dataset.v; saveS(); markMode(); };
+  });
+  const th2 = $("#think");
+  const markThink = () => { th2.classList.toggle("on", S.thinking); th2.textContent = "Thinking " + (S.thinking ? "on" : "off"); };
+  th2.onclick = () => { S.thinking = !S.thinking; saveS(); markThink(); };
+  markMode(); markThink();
+}
+function markMode(){ document.querySelectorAll("#mode button").forEach(b => b.classList.toggle("on", b.dataset.v === S.mode)); }
+
+/* ---------- boot ---------- */
+bindSettings();
+if (!active()) activeId = convs[0] ? convs[0].id : null;
+renderConvs(); renderChat(); updateSend();
+loadModels().then(poll);
+})();
+</script>
+</body>
+</html>
