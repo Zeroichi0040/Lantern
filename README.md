@@ -8,12 +8,16 @@ Nothing leaves your machine, and there is nothing to `pip install` or `npm insta
 
 - Discovers `.gguf` models (including subfolders; multi-part models show only shard 1; `mmproj` files are hidden)
 - Starts and stops `llama-server` from the browser, CPU or GPU offload
-- Context length and thread controls
-- Streaming chat with a Stop button and Regenerate
+- Context length and thread controls, remembered separately for each model
+- Streaming chat with a Stop button (or Esc) and Regenerate
+- Context meter showing how full the model's context window is; if a chat gets too long,
+  one click trims the oldest messages and retries
+- Edit and resend an earlier message
 - Thinking toggle, with reasoning shown in a collapsible "Thought process" block
   (works with a separate reasoning field or inline `<think>` tags)
-- Temperature, top-p, max tokens and system prompt
-- Multiple chats saved in your browser, Markdown export, code copy buttons, tokens/sec
+- Temperature, top-p, max tokens, system prompt, and advanced sampling (top-k, min-p, repeat penalty, seed)
+- Multiple chats saved in your browser: search, rename (double-click), delete, Markdown export
+- Markdown tables, syntax-highlighted code blocks with copy buttons, tokens/sec per reply
 - Light and dark themes, usable on narrow screens
 - Windows, macOS and Linux
 
@@ -70,6 +74,25 @@ Then open <http://127.0.0.1:8080> (`--open` does it for you).
 - Requests are rejected unless the `Host` and `Origin` headers point at Lantern itself,
   which blocks other websites (and DNS-rebinding tricks) from driving your local model.
 - Chats live in your browser's local storage. The model server log is `$LANTERN_HOME/llama-server.log`.
+
+## Development and tests
+
+The backend is plain standard-library Python; the UI is one HTML file (`web/index.html`).
+Tests run against a fake `llama-server` (`tests/fake_llama_server.py`), so no real model is needed:
+
+```bash
+python -m unittest discover -s tests -p "test_backend.py" -v   # backend, no extra packages
+
+pip install playwright && python -m playwright install chromium
+python -m unittest discover -s tests -p "test_ui.py" -v        # drives the UI in a real browser
+```
+
+Set `LANTERN_TEST_CHROME=/path/to/chrome` to use an installed Chrome instead of Playwright's download.
+GitHub Actions runs both suites on every push.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
 
 ## Troubleshooting
 
