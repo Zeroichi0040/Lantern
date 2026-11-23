@@ -21,7 +21,7 @@ READY = re.compile(r"\bready\b")
 class UITests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = LanternProcess(models=("test-model.gguf", "crash-me.gguf"))
+        cls.app = LanternProcess(models=("test-model.gguf", "alternate-model.gguf", "crash-me.gguf"))
         cls.pw = sync_playwright().start()
         cls.browser = cls.pw.chromium.launch(
             executable_path=os.environ.get("LANTERN_TEST_CHROME") or None,
@@ -175,13 +175,13 @@ class UITests(unittest.TestCase):
         self.send("first model")
         self.wait_done()
         expect(self.page.locator(".msg.assistant .role").last).to_have_text("test-model.gguf")
-        self.page.select_option("#model", "crash-me.gguf")
+        self.page.select_option("#model", "alternate-model.gguf")
         self.page.click("#load")
-        expect(self.page.locator("#pill")).to_contain_text("crash-me.gguf", timeout=20000)
+        expect(self.page.locator("#pill")).to_contain_text("alternate-model.gguf", timeout=20000)
         self.send("second model")
         self.wait_done()
         expect(self.page.locator(".msg.assistant .role").nth(0)).to_have_text("test-model.gguf")
-        expect(self.page.locator(".msg.assistant .role").nth(1)).to_have_text("crash-me.gguf")
+        expect(self.page.locator(".msg.assistant .role").nth(1)).to_have_text("alternate-model.gguf")
         self.page.click("#settingsToggle")
         self.page.select_option("#assistantNameMode", "custom")
         self.page.fill("#customAssistantName", "Test Persona")
@@ -194,6 +194,7 @@ class UITests(unittest.TestCase):
 
     def test_system_prompt_library_editor_and_conversation_selection(self):
         self.load_model()
+        self.page.click("#newChat")
         self.page.click("#settingsToggle")
         self.page.click("#addPrompt")
         expect(self.page.locator("#promptModal")).to_be_visible()
