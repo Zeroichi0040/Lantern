@@ -411,11 +411,13 @@ class UITests(unittest.TestCase):
 
     def test_advanced_sampling_is_sent(self):
         self.load_model()
+        self.page.click("#settingsToggle")
         self.page.locator("details.adv summary").click()
         self.page.fill("#topk", "12")
         self.page.fill("#minp", "0.1")
         self.page.fill("#repeat", "1.2")
         self.page.fill("#seed", "42")
+        self.page.click("#settingsToggle")
         self.send("sampling")
         self.wait_done()
         _, last = self.app.request("GET", "/last-request", port=self.app.llama_port)
