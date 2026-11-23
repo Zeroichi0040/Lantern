@@ -94,7 +94,7 @@ class LanternProcess:
                 return status
             time.sleep(0.15)
 
-        log_path = self.home / "llama-server.log"
+        log_path = self.home / "lantern-server.log"
         try:
             with log_path.open("r", encoding="utf-8", errors="replace") as log_file:
                 log_tail = "\n".join(log_file.read().splitlines()[-30:])
