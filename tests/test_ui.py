@@ -76,7 +76,7 @@ class UITests(unittest.TestCase):
                     '<div class="body">Long conversation message ' + i + '</div></div>'
                 ).join("");
                 const extra = document.createElement("div");
-                extra.style.height = "1200px";
+                extra.style.cssText = "height:1200px;flex:0 0 1200px";
                 extra.setAttribute("aria-hidden", "true");
                 document.querySelector(".side-scroll").appendChild(extra);
                 document.querySelector("#chat").scrollTop =
@@ -169,6 +169,7 @@ class UITests(unittest.TestCase):
 
     def test_settings_screen_persists_ui_preferences_and_contains_generation(self):
         self.load_model()
+        expect(self.page.locator("#input")).to_have_attribute("placeholder", "Message test-model.gguf")
         self.page.click("#settingsToggle")
         expect(self.page.locator("#settingsPanel")).to_be_visible()
         self.assertEqual(self.page.locator("#side #generationSettings").count(), 0)
@@ -179,10 +180,21 @@ class UITests(unittest.TestCase):
         expect(self.page.locator("#showDelete")).to_be_checked()
         self.page.locator("#showContinue").uncheck()
         self.page.locator("#modelPlaceholder").uncheck()
+        expect(self.page.locator("#input")).to_have_attribute("placeholder", "Message your local model…")
         self.page.reload()
         expect(self.page.locator("#settingsPanel")).to_be_hidden()
         expect(self.page.locator("#showContinue")).not_to_be_checked()
         expect(self.page.locator("#modelPlaceholder")).not_to_be_checked()
+
+    def test_composer_scrollbar_only_appears_when_text_overflows(self):
+        input_box = self.page.locator("#input")
+        self.assertEqual(input_box.evaluate("(el) => getComputedStyle(el).overflowY"), "hidden")
+        long_text = "\\n".join(["A long line to make the composer grow."] * 40)
+        input_box.fill(long_text)
+        self.assertEqual(input_box.evaluate("(el) => getComputedStyle(el).overflowY"), "auto")
+        input_box.fill("short message")
+        self.assertEqual(input_box.evaluate("(el) => getComputedStyle(el).overflowY"), "hidden")
+        self.assertEqual(self.page.locator(".hintkey").count(), 0)
 
     def test_message_action_preferences_hide_message_controls(self):
         self.load_model()
