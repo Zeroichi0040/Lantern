@@ -541,6 +541,54 @@ class UITests(unittest.TestCase):
         self.page.select_option("#model", "crash-me.gguf")
         self.assertEqual(self.page.input_value("#ctx"), "8192")
 
+    def test_custom_username_is_decorative_and_persisted(self):
+        self.load_model()
+        self.page.click("#settingsToggle")
+        self.page.fill("#username", "Commander")
+        self.page.click("#settingsToggle")
+        self.send("hello from the user")
+        self.wait_done()
+
+        expect(self.page.locator(".msg.user .role").last).to_have_text("Commander")
+        _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
+        self.assertEqual(request["messages"][-1], {
+            "role": "user", "content": "hello from the user"
+        })
+        self.assertNotIn("Commander", str(request))
+        self.assertNotIn("displayName", str(request))
+
+        self.page.reload()
+        self.page.click("#settingsToggle")
+        expect(self.page.locator("#username")).to_have_value("Commander")
+
+    def test_response_timing_and_optional_thinking_split(self):
+        self.load_model()
+        self.send("SLOWTHINK timing sample")
+        expect(self.last_reply().locator(".activity")).to_contain_text("Thinking", timeout=5000)
+        expect(self.last_reply().locator(".activity")).to_contain_text("Working")
+        self.wait_done()
+        activity = self.last_reply().locator(".activity").inner_text()
+        self.assertIn("Thought for", activity)
+        self.assertIn("Worked for", activity)
+        self.assertIn(", ", activity)
+
+        self.page.click("#settingsToggle")
+        self.page.locator("#splitThinkingTime").uncheck()
+        self.page.click("#settingsToggle")
+        activity = self.last_reply().locator(".activity").inner_text()
+        self.assertIn("Worked for", activity)
+        self.assertNotIn("Thought for", activity)
+
+    def test_settings_categories_keep_related_controls_grouped(self):
+        self.page.click("#settingsToggle")
+        for label in ("Identity", "Chat", "Prompts", "Model"):
+            expect(self.page.locator("#settingsNav")).to_contain_text(label)
+        self.page.locator('#settingsNav button[data-target="chatSettings"]').click()
+        expect(self.page.locator("#chatSettings")).to_be_visible()
+        expect(self.page.locator("#chatSettings #splitThinkingTime")).to_be_visible()
+        self.page.locator('#settingsNav button[data-target="modelSettings"]').click()
+        expect(self.page.locator("#modelSettings #generationSettings")).to_be_visible()
+
     def test_escape_key_stops_generation(self):
         self.load_model()
         self.send("LONG")
