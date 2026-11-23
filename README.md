@@ -9,7 +9,7 @@ Nothing leaves your machine, and there is nothing to `pip install` or `npm insta
 - Discovers `.gguf` models (including subfolders; multi-part models show only shard 1; `mmproj` files are hidden)
 - Starts and stops `llama-server` from the browser, CPU or GPU offload
 - Context length and thread controls, remembered separately for each model
-- Streaming chat with a Stop button (or Esc), Regenerate, and Continue to extend a reply in separate assistant bubbles
+- Streaming chat with a Stop button (or Esc), Regenerate, and Continue (a hidden prompt) to extend a reply in separate assistant bubbles
 - Edit completed assistant responses; changes are saved into conversation history and used by subsequent turns
 - Delete individual user or assistant bubbles, optionally deleting every message after the selected bubble
 - Context meter showing how full the model's context window is; if a chat gets too long,
@@ -27,7 +27,6 @@ Nothing leaves your machine, and there is nothing to `pip install` or `npm insta
 
 - Python 3.9+
 - A llama.cpp build that includes `llama-server` (use the build matching your hardware: CPU, Vulkan, CUDA, Metal)
-- Continue requires `llama-server` support for the OpenAI-compatible `continue_final_message` request parameter; older builds may not support it
 - One or more `.gguf` model files
 
 ## Setup
