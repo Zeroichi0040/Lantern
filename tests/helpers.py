@@ -96,7 +96,8 @@ class LanternProcess:
 
         log_path = self.home / "llama-server.log"
         try:
-            log_tail = "\\n".join(log_path.read_text(errors="replace").splitlines()[-30:])
+            with log_path.open("r", encoding="utf-8", errors="replace") as log_file:
+                log_tail = "\n".join(log_file.read().splitlines()[-30:])
         except OSError:
             log_tail = "<log unavailable>"
         raise AssertionError(
