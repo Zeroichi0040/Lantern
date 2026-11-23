@@ -19,6 +19,7 @@ import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+print("fake llama-server entrypoint reached", flush=True)
 args = sys.argv[1:]
 
 
@@ -127,6 +128,7 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
 
+print("fake llama-server binding 127.0.0.1:%d" % PORT, flush=True)
 server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
 print("fake llama-server listening on 127.0.0.1:%d" % PORT, flush=True)
 server.serve_forever()
