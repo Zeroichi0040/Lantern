@@ -27,7 +27,10 @@ def make_wrapper(directory):
         path.write_text('@echo off\r\n"%s" "%s" %%*\r\n' % (sys.executable, FAKE))
     else:
         path = Path(directory) / "llama-server"
-        path.write_text('#!/bin/sh\nexec "%s" "%s" "$@"\n' % (sys.executable, FAKE))
+        # Use a direct Python shebang instead of a shell wrapper. This avoids
+        # leaving an extra shell process between Lantern and the fake server.
+        path.write_text("#!%s\nimport runpy\nrunpy.run_path(%r, run_name='__main__')\n"
+                        % (sys.executable, str(FAKE)))
         path.chmod(path.stat().st_mode | stat.S_IXUSR)
     return path
 
