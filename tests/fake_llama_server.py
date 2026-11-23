@@ -6,7 +6,8 @@ Understands the few flags Lantern passes (-m, --port, -c) and serves:
   GET  /last-request           -> the last chat request body (test helper)
   POST /v1/chat/completions    -> a canned streaming reply
 
-Behaviour is chosen by the model file name or by keywords in the last user message\n(including Lantern’s request-only synthetic "Continue." turn):
+Behaviour is chosen by the model file name or by keywords in the last user message
+(including Lantern’s request-only synthetic "Continue." turn):
   model name contains "crash"   -> prints an error and exits with code 3
   message contains "OVERFLOW"   -> 400 exceed_context_size_error
   each "BIGMSG" in a user message counts as 1500 prompt tokens, so a few of them
@@ -112,7 +113,11 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.flush()
 
         pieces = []
-        continuing = bool(messages and messages[-1].get("role") == "user"\n                          and messages[-1].get("content") == "Continue.")
+        continuing = bool(
+            messages
+            and messages[-1].get("role") == "user"
+            and messages[-1].get("content") == "Continue."
+        )
         if continuing:
             pieces.append(("content", " Continued scene."))
         else:
