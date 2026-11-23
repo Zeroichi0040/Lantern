@@ -112,16 +112,20 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.flush()
 
         pieces = []
-        if req.get("chat_template_kwargs", {}).get("enable_thinking"):
-            for w in ("Let me ", "think."):
-                pieces.append(("reasoning_content", w))
-        pieces.append(("content", "You said: %s\n\n" % user_text))
-        if "TABLE" in user_text:
-            pieces.append(("content", "| Name | Size |\n|---|---|\n| tiny | 1 GB |\n| big | 9 GB |\n\n"))
-        if "LONG" in user_text:
-            pieces.extend(("content", "word%d " % i) for i in range(200))
+        continuing = req.get("continue_final_message") in (True, "content")
+        if continuing:
+            pieces.append(("content", " Continued scene."))
         else:
-            pieces.append(("content", "```python\ndef hi():\n    return 'x'  # greet\n```\n"))
+            if req.get("chat_template_kwargs", {}).get("enable_thinking"):
+                for w in ("Let me ", "think."):
+                    pieces.append(("reasoning_content", w))
+            pieces.append(("content", "You said: %s\n\n" % user_text))
+            if "TABLE" in user_text:
+                pieces.append(("content", "| Name | Size |\n|---|---|\n| tiny | 1 GB |\n| big | 9 GB |\n\n"))
+            if "LONG" in user_text:
+                pieces.extend(("content", "word%d " % i) for i in range(200))
+            else:
+                pieces.append(("content", "```python\ndef hi():\n    return 'x'  # greet\n```\n"))
 
         completion = 0
         try:
