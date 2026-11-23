@@ -115,6 +115,9 @@ details.think .think-body{white-space:pre-wrap;margin-top:6px;max-height:320px;o
 .link:hover{color:var(--text)}
 .link.continue{color:var(--accent);font-weight:650}
 .link.continue:hover{text-decoration:underline}
+.link.confirm-delete{color:var(--bad);font-weight:600}
+.delete-confirm{display:inline-flex;align-items:center;gap:5px;color:var(--muted);font-size:12px}
+.delete-confirm input{margin:0}
 .err{color:var(--bad);font-size:13px;white-space:pre-wrap}
 .cursor::after{content:"▍";color:var(--accent);animation:pulse 1s infinite;margin-left:1px}
 
@@ -407,7 +410,8 @@ function msgEl(m, i, isLast){
   el.dataset.idx = i;
   if (m.role === "user"){
     el.innerHTML = '<div class="role">You</div><div class="body"></div>' +
-      '<div class="meta"><button type="button" class="link edit">Edit</button></div>';
+      '<div class="meta"><button type="button" class="link edit">Edit</button>' +
+      '<button type="button" class="link delete-message">Delete</button></div>';
     el.querySelector(".body").textContent = m.content;
     return el;
   }
@@ -416,6 +420,7 @@ function msgEl(m, i, isLast){
     '<div class="body"></div><div class="err" hidden></div>' +
     '<div class="errbar" hidden><button type="button" class="link trim">Trim oldest messages &amp; retry</button></div>' +
     '<div class="meta"><span class="stats"></span><button type="button" class="link copy">Copy</button>' +
+    '<button type="button" class="link delete-message">Delete</button>' +
     (m.content && !m.error ? '<button type="button" class="link edit-assistant">Edit</button>' : "") +
     (isLast ? '<button type="button" class="link regen">Regenerate</button>' : "") +
     (isLast && m.content && !m.error ? '<button type="button" class="link continue">Continue</button>' : "") + "</div>";
@@ -638,9 +643,17 @@ function updateSend(){
   input.placeholder = status.state === "ready" ? "Message your local model…" : "Load a model to start chatting…";
 }
 
-function chatBody(c){
+function chatBody(c, continueFinalMessage = false){
   // c.skip = how many oldest messages were trimmed away to fit the context window.
-  const hist = c.messages.slice(c.skip || 0, -1).map(x => ({role: x.role, content: x.content}));
+  // Adjacent assistant bubbles are one continuous passage for the model, even though
+  // they remain separate bubbles in the UI.
+  const hist = c.messages.slice(c.skip || 0, -1).reduce((messages, x) => {
+    const item = {role: x.role, content: x.content || ""};
+    const previous = messages[messages.length - 1];
+    if (item.role === "assistant" && previous && previous.role === "assistant") previous.content += item.content;
+    else messages.push(item);
+    return messages;
+  }, []);
   const msgs = (S.system.trim() ? [{role: "system", content: S.system.trim()}] : []).concat(hist);
   const body = {
     messages: msgs, stream: true, temperature: S.temp, top_p: S.top,
@@ -648,6 +661,7 @@ function chatBody(c){
     chat_template_kwargs: {enable_thinking: S.thinking},
     reasoning_format: "deepseek", stream_options: {include_usage: true}
   };
+  if (continueFinalMessage) body.continue_final_message = "content";
   if (S.maxtok > 0) body.max_tokens = S.maxtok;
   return body;
 }
@@ -664,8 +678,9 @@ function apiError(j, fallback){
   return e;
 }
 
-async function generate(c){
+async function generate(c, options = {}){
   const m = {role: "assistant", content: "", reasoning: ""};
+  if (options.continueFinalMessage) m.continuation = true;
   c.messages.push(m);
   if (c.title === "New chat"){ const u = c.messages.find(x => x.role === "user"); if (u) c.title = u.content.trim().replace(/\s+/g, " ").slice(0, 48) || "New chat"; }
   c.updated = Date.now();
@@ -675,7 +690,7 @@ async function generate(c){
   const t0 = performance.now(); let chunks = 0, timings = null, usage = null;
 
   try {
-    const r = await fetch("/v1/chat/completions", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(chatBody(c)), signal: controller.signal});
+    const r = await fetch("/v1/chat/completions", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(chatBody(c, !!m.continuation)), signal: controller.signal});
     if (!r.ok) throw apiError(await r.json().catch(() => ({})), r.statusText);
     const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
     for (;;){
@@ -785,6 +800,34 @@ function saveAssistantEdit(idx, ta){
   saveC(); renderConvs(); renderChat(); renderMeter();
 }
 
+function startMessageDelete(idx){
+  if (generating) return toast("Stop the current reply first.");
+  const c = active(), m = c && c.messages[idx];
+  const el = wrap.querySelector(`.msg[data-idx="${idx}"]`);
+  if (!m || !el || el.querySelector("textarea")) return;
+  el.querySelector(".meta").innerHTML =
+    '<label class="delete-confirm"><input type="checkbox" class="delete-following"> Also delete following messages</label>' +
+    '<button type="button" class="link confirm-delete">Delete</button>' +
+    '<button type="button" class="link cancel-delete">Cancel</button>';
+}
+
+function deleteMessage(idx, deleteFollowing){
+  if (generating) return toast("Stop the current reply first.");
+  const c = active();
+  if (!c || !c.messages[idx]) return;
+  const skipped = c.skip || 0;
+  if (deleteFollowing){
+    c.messages.splice(idx);
+    c.skip = Math.min(skipped, idx);
+  } else {
+    c.messages.splice(idx, 1);
+    if (idx < skipped) c.skip = skipped - 1;
+  }
+  if (!c.skip) delete c.skip;
+  c.updated = Date.now();
+  saveC(); renderConvs(); renderChat(); renderMeter();
+}
+
 async function continueStory(){
   if (generating) return;
   const c = active();
@@ -792,9 +835,8 @@ async function continueStory(){
   if (!last || last.role !== "assistant" || !last.content || last.error) return;
   if (status.state !== "ready") return toast("Load a model first.");
 
-  // generate() appends a blank assistant placeholder, which chatBody() excludes.
-  // The previous assistant response therefore becomes the final request turn.
-  await generate(c);
+  // The new bubble is generated by continuing the previous assistant message in place.
+  await generate(c, {continueFinalMessage: true});
 }
 
 chat.addEventListener("click", async e => {
@@ -807,7 +849,14 @@ chat.addEventListener("click", async e => {
   } else if (t.classList.contains("regen")){
     const c = active(); if (!c || generating) return;
     if (status.state !== "ready") return toast("Load a model first.");
-    c.messages.pop(); await generate(c);
+    const continueFinalMessage = !!c.messages[c.messages.length - 1].continuation;
+    c.messages.pop(); await generate(c, {continueFinalMessage});
+  } else if (t.classList.contains("delete-message")){
+    startMessageDelete(idx);
+  } else if (t.classList.contains("confirm-delete")){
+    deleteMessage(idx, !!(msg && msg.querySelector(".delete-following")?.checked));
+  } else if (t.classList.contains("cancel-delete")){
+    renderChat();
   } else if (t.classList.contains("edit")){
     startEdit(idx);
   } else if (t.classList.contains("edit-assistant")){
@@ -833,12 +882,18 @@ chat.addEventListener("click", async e => {
   } else if (t.classList.contains("trim")){
     const c = active(); if (!c || generating) return;
     if (status.state !== "ready") return toast("Load a model first.");
-    // The list ends with the failed reply; the user message just before it must stay.
-    const lastUser = c.messages.length - 2, cur = c.skip || 0;
-    const next = Math.min(cur + 2, lastUser);
+    // Keep the latest user turn for a normal reply, or the latest assistant passage
+    // for a continuation retry. Older messages can be trimmed in either case.
+    const failed = c.messages[c.messages.length - 1];
+    const retryContinuation = !!(failed && failed.continuation);
+    const protectedIndex = retryContinuation
+      ? c.messages.length - 2
+      : c.messages.reduce((last, m, i) => m.role === "user" ? i : last, -1);
+    const cur = c.skip || 0;
+    const next = Math.min(cur + 2, protectedIndex);
     if (next <= cur) return toast("Nothing left to trim: this one message is too long. Raise Context and reload the model.");
     c.skip = next; c.messages.pop();
-    await generate(c);
+    await generate(c, {continueFinalMessage: retryContinuation});
   }
 });
 async function copy(text){
