@@ -145,6 +145,34 @@ details.think .think-body{white-space:pre-wrap;margin-top:6px;max-height:320px;o
 .setting-row input[type=checkbox]{width:18px;height:18px;margin:0;accent-color:var(--accent);flex:none}
 #settingsTitle{font-weight:600;flex:1}
 #app.settings-open #title,#app.settings-open #meter,#app.settings-open #export,#app.settings-open #menu{display:none!important}
+.prompt-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.prompt-heading>div{display:flex;flex-direction:column;gap:2px}
+.prompt-heading small{font-size:12px;color:var(--muted)}
+#promptList{display:flex;flex-direction:column;gap:8px}
+.prompt-empty{font-size:12px;color:var(--muted);padding:8px 2px}
+.prompt-item{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:9px;padding:10px;background:var(--panel)}
+.prompt-item.active{border-color:var(--accent)}
+.prompt-info{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.prompt-info strong{font-size:13px;font-weight:600;overflow-wrap:anywhere}
+.prompt-info small{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prompt-active{position:relative;display:inline-flex;flex-direction:row;align-items:center;gap:0;margin:0;flex:none;cursor:pointer}
+.prompt-active input{position:absolute;inset:0;z-index:2;opacity:0;width:36px;height:20px;margin:0;cursor:pointer}
+.prompt-active span{width:36px;height:20px;border-radius:99px;background:var(--line);transition:background .15s;position:relative;pointer-events:none}
+.prompt-active span:after{content:"";position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .15s}
+.prompt-active input:checked+span{background:var(--accent)}
+.prompt-active input:checked+span:after{transform:translateX(16px)}
+.prompt-active input:focus-visible+span{outline:2px solid var(--text);outline-offset:2px}
+.prompt-actions{display:flex;gap:10px;flex:none}
+.prompt-actions .link.delete-prompt{color:var(--bad)}
+.prompt-editor-backdrop{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:18px}
+.prompt-editor{width:min(640px,100%);max-height:min(860px,92vh);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:15px;box-shadow:0 18px 70px rgba(0,0,0,.4);overflow:hidden}
+.prompt-editor header{padding:20px 24px;border-bottom:1px solid var(--line)}
+.prompt-editor h2{font-size:18px;margin:0;font-weight:650}
+.prompt-editor-body{padding:20px 24px;display:flex;flex-direction:column;gap:8px;overflow:auto}
+.prompt-editor-body label{font-size:13px;color:var(--text);font-weight:600;margin-top:2px}
+.prompt-editor-body input{background:var(--panel2);padding:10px 12px}
+.prompt-editor-body textarea{background:var(--panel2);resize:vertical;min-height:240px;max-height:55vh;padding:12px;line-height:1.5}
+.prompt-editor footer{padding:14px 24px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
 
 [hidden]{display:none !important}
 
@@ -237,7 +265,20 @@ details.adv .grid2{margin-top:8px}
     <section id="settingsPanel" hidden>
       <div class="settings-wrap">
         <h1>Settings</h1>
-        <p class="settings-intro">Customize message actions, the composer, and generation behavior.</p>
+        <p class="settings-intro">Customize message actions, assistant identity, system prompts, and generation behavior.</p>
+        <section class="card settings-card">
+          <h3>Assistant identity</h3>
+          <label>Assistant name
+            <select id="assistantNameMode">
+              <option value="lantern">Lantern</option>
+              <option value="model">Current model name</option>
+              <option value="custom">Custom name</option>
+            </select>
+          </label>
+          <label id="customAssistantNameWrap" hidden>Custom name
+            <input type="text" id="assistantCustomName" maxlength="60" placeholder="Enter an assistant name">
+          </label>
+        </section>
         <section class="card settings-card">
           <h3>Message actions</h3>
           <label class="setting-row"><span><strong>Show Edit</strong><small>Show the Edit action on user and assistant messages</small></span><input type="checkbox" id="showEdit"></label>
@@ -248,6 +289,13 @@ details.adv .grid2{margin-top:8px}
         <section class="card settings-card">
           <h3>Message composer</h3>
           <label class="setting-row"><span><strong>Use model name in placeholder</strong><small>Show “Message [model name]” while a model is ready</small></span><input type="checkbox" id="modelPlaceholder"></label>
+        </section>
+        <section class="card settings-card" id="systemPromptSettings">
+          <div class="prompt-heading">
+            <div><h3>System prompts</h3><small id="activePromptSummary">No active prompt</small></div>
+            <button type="button" class="btn" id="addPrompt">+ Add prompt</button>
+          </div>
+          <div id="promptList"></div>
         </section>
         <details class="card settings-card" id="generationSettings" open>
           <summary>Generation</summary>
@@ -263,7 +311,6 @@ details.adv .grid2{margin-top:8px}
               <label>Seed (-1 = random)<input id="seed" type="number" step="1"></label>
             </div>
           </details>
-          <label>System prompt<textarea id="system" rows="3" placeholder="Optional instructions for every chat"></textarea></label>
         </details>
       </div>
     </section>
@@ -278,6 +325,21 @@ details.adv .grid2{margin-top:8px}
       </div>
     </form>
   </main>
+</div>
+<div id="promptEditor" class="prompt-editor-backdrop" hidden>
+  <section class="prompt-editor" role="dialog" aria-modal="true" aria-labelledby="promptEditorTitle">
+    <header><h2 id="promptEditorTitle">Edit Prompt</h2></header>
+    <div class="prompt-editor-body">
+      <label for="promptName">Name</label>
+      <input type="text" id="promptName" maxlength="80" placeholder="Prompt name">
+      <label for="promptContent">Content</label>
+      <textarea id="promptContent" rows="12" placeholder="Write the system prompt here…"></textarea>
+    </div>
+    <footer>
+      <button type="button" class="btn" id="promptCancel">Cancel</button>
+      <button type="button" class="btn primary" id="promptSave">Save</button>
+    </footer>
+  </section>
 </div>
 <div id="toast" role="status"></div>
 
@@ -301,9 +363,14 @@ const MODEL_KEYS = ["mode", "ctx", "threads", "thinking", "temp", "top", "topk",
 const defaults = {model:"", mode:"cpu", ctx:4096, threads:4, temp:0.7, top:0.95, topk:40, minp:0.05, repeat:1, seed:-1, maxtok:0, system:"", thinking:true, perModel:{}};
 let S = {...defaults, ...store.get("lantern.settings", {})};
 if (!S.perModel || typeof S.perModel !== "object") S.perModel = {};
-const uiDefaults = {showEdit:true, showContinue:true, showDelete:true, deleteFollowing:false, modelPlaceholder:true};
+const uiDefaults = {
+  showEdit:true, showContinue:true, showDelete:true, deleteFollowing:false, modelPlaceholder:true,
+  assistantNameMode:"lantern", assistantCustomName:"", defaultPromptId:null
+};
 let UI = {...uiDefaults, ...store.get("lantern.ui-settings", {})};
-for (const key of Object.keys(uiDefaults)) if (typeof UI[key] !== "boolean") UI[key] = uiDefaults[key];
+for (const [key, value] of Object.entries(uiDefaults)){
+  if (typeof UI[key] !== typeof value) UI[key] = value;
+}
 const saveUI = () => store.set("lantern.ui-settings", UI);
 let convs = store.get("lantern.convs", []);
 let activeId = store.get("lantern.active", null);
@@ -311,12 +378,133 @@ let status = {state:"offline"};
 let generating = false, controller = null, threadsTouched = !!store.get("lantern.settings", null);
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+let prompts = store.get("lantern.prompts", []);
+if (!Array.isArray(prompts)) prompts = [];
+prompts = prompts.filter(p => p && typeof p.id === "string" && typeof p.name === "string" && typeof p.content === "string");
+let promptDataChanged = false;
+if (!prompts.length && typeof S.system === "string" && S.system.trim()){
+  const legacyPrompt = {id:"legacy-default", name:"Default", content:S.system};
+  prompts.push(legacyPrompt);
+  convs.forEach(c => { if (!c.systemPromptId) c.systemPromptId = legacyPrompt.id; });
+  UI.defaultPromptId = legacyPrompt.id;
+  S.system = "";
+  store.set("lantern.settings", S);
+  promptDataChanged = true;
+}
+const promptExists = id => !!id && prompts.some(p => p.id === id);
+if (!promptExists(UI.defaultPromptId)) UI.defaultPromptId = null;
+if (!["lantern", "model", "custom"].includes(UI.assistantNameMode)) UI.assistantNameMode = "lantern";
+convs.forEach(c => {
+  if (c.systemPromptId && !promptExists(c.systemPromptId)){ c.systemPromptId = null; promptDataChanged = true; }
+});
+if (promptDataChanged) store.set("lantern.convs", convs);
+store.set("lantern.prompts", prompts);
+saveUI();
+
+const savePrompts = () => store.set("lantern.prompts", prompts);
+const promptById = id => prompts.find(p => p.id === id) || null;
 const saveS = () => {
   if (S.model) S.perModel[S.model] = Object.fromEntries(MODEL_KEYS.map(k => [k, S[k]]));
   store.set("lantern.settings", S);
 };
 const saveC = () => { store.set("lantern.convs", convs.slice(0, 100)); store.set("lantern.active", activeId); };
 const active = () => convs.find(c => c.id === activeId);
+
+function renderPromptLibrary(){
+  const list = $("#promptList");
+  if (!list) return;
+  list.innerHTML = "";
+  const c = active();
+  const selectedId = c ? (c.systemPromptId || null) : UI.defaultPromptId;
+  const selected = promptById(selectedId);
+  $("#activePromptSummary").textContent = selected ? `Active for this chat: ${selected.name}` : "No active prompt";
+  if (!prompts.length){
+    const empty = document.createElement("div");
+    empty.className = "prompt-empty";
+    empty.textContent = "No saved prompts yet. Add one to reuse system instructions across conversations.";
+    list.appendChild(empty);
+    return;
+  }
+  prompts.forEach(prompt => {
+    const row = document.createElement("div");
+    row.className = "prompt-item" + (prompt.id === selectedId ? " active" : "");
+    row.dataset.promptId = prompt.id;
+    const info = document.createElement("div");
+    info.className = "prompt-info";
+    const name = document.createElement("strong");
+    name.textContent = prompt.name;
+    const preview = document.createElement("small");
+    const clean = prompt.content.trim().replace(/\s+/g, " ");
+    preview.textContent = clean.slice(0, 120) || "Empty prompt";
+    info.append(name, preview);
+    const toggleLabel = document.createElement("label");
+    toggleLabel.className = "prompt-active";
+    toggleLabel.title = "Use this prompt for the current conversation";
+    const toggle = document.createElement("input");
+    toggle.type = "checkbox";
+    toggle.className = "prompt-active-toggle";
+    toggle.checked = prompt.id === selectedId;
+    toggle.setAttribute("aria-label", `Activate ${prompt.name}`);
+    const track = document.createElement("span");
+    toggleLabel.append(toggle, track);
+    const actions = document.createElement("div");
+    actions.className = "prompt-actions";
+    const edit = document.createElement("button");
+    edit.type = "button"; edit.className = "link edit-prompt"; edit.textContent = "Edit";
+    const del = document.createElement("button");
+    del.type = "button"; del.className = "link delete-prompt"; del.textContent = "Delete";
+    actions.append(edit, del);
+    row.append(info, toggleLabel, actions);
+    list.appendChild(row);
+  });
+}
+function setActivePrompt(id, enabled){
+  const c = active();
+  const nextId = enabled && promptExists(id) ? id : null;
+  if (c){ c.systemPromptId = nextId; saveC(); }
+  UI.defaultPromptId = nextId;
+  saveUI();
+  renderPromptLibrary();
+}
+let editingPromptId = null;
+function openPromptEditor(id = null){
+  const prompt = id ? promptById(id) : null;
+  if (id && !prompt) return;
+  editingPromptId = id;
+  $("#promptName").value = prompt ? prompt.name : "";
+  $("#promptContent").value = prompt ? prompt.content : "";
+  $("#promptEditor").hidden = false;
+  $("#promptName").focus();
+}
+function closePromptEditor(){
+  $("#promptEditor").hidden = true;
+  editingPromptId = null;
+}
+function savePromptEditor(){
+  const name = $("#promptName").value.trim();
+  if (!name) return toast("Give this prompt a name first.");
+  const content = $("#promptContent").value;
+  if (editingPromptId){
+    const prompt = promptById(editingPromptId);
+    if (!prompt) return closePromptEditor();
+    prompt.name = name;
+    prompt.content = content;
+  } else {
+    prompts.unshift({id:uid(), name, content});
+  }
+  savePrompts();
+  closePromptEditor();
+  renderPromptLibrary();
+}
+function deletePrompt(id){
+  const prompt = promptById(id);
+  if (!prompt) return;
+  if (!window.confirm(`Delete the system prompt “${prompt.name}”?`)) return;
+  prompts = prompts.filter(p => p.id !== id);
+  convs.forEach(c => { if (c.systemPromptId === id) c.systemPromptId = null; });
+  if (UI.defaultPromptId === id) UI.defaultPromptId = null;
+  savePrompts(); saveC(); saveUI(); renderPromptLibrary();
+}
 
 let toastTimer;
 function toast(msg){
@@ -449,7 +637,7 @@ function msgEl(m, i, isLast){
     if (!el.querySelector(".meta").children.length) el.querySelector(".meta").hidden = true;
     return el;
   }
-  el.innerHTML = '<div class="role">Lantern</div>' +
+  el.innerHTML = '<div class="role"></div>' +
     '<details class="think" hidden><summary>Thought process</summary><div class="think-body"></div></details>' +
     '<div class="body"></div><div class="err" hidden></div>' +
     '<div class="errbar" hidden><button type="button" class="link trim">Trim oldest messages &amp; retry</button></div>' +
@@ -458,6 +646,7 @@ function msgEl(m, i, isLast){
     (UI.showEdit && m.content && !m.error ? '<button type="button" class="link edit-assistant">Edit</button>' : "") +
     (isLast ? '<button type="button" class="link regen">Regenerate</button>' : "") +
     (UI.showContinue && isLast && m.content && !m.error ? '<button type="button" class="link continue">Continue</button>' : "") + "</div>";
+  el.querySelector(".role").textContent = m.displayName || "Lantern";
   updateEl(el, m, false);
   return el;
 }
@@ -495,6 +684,7 @@ function schedule(el, m){
 function renderChat(){
   const c = active();
   wrap.innerHTML = "";
+  renderPromptLibrary();
   $("#title").textContent = c ? c.title : "New chat";
   if (!c || !c.messages.length){
     wrap.innerHTML = '<div id="empty"><h1>Lantern</h1><p>Chat with a model running entirely on your machine. Pick a GGUF model on the left, load it, and say hello.</p></div>';
@@ -579,7 +769,10 @@ function renameConv(id, anchor){
 }
 
 function newConv(){
-  const c = {id: uid(), title: "New chat", messages: [], updated: Date.now()};
+  const previous = active();
+  const inheritedPrompt = previous ? previous.systemPromptId : UI.defaultPromptId;
+  const c = {id: uid(), title: "New chat", messages: [], updated: Date.now(),
+    systemPromptId: promptExists(inheritedPrompt) ? inheritedPrompt : null};
   convs.unshift(c); activeId = c.id; saveC(); renderConvs(); renderChat();
   return c;
 }
@@ -690,7 +883,9 @@ function chatBody(c, continuePrompt = false){
     else messages.push(item);
     return messages;
   }, []);
-  const msgs = (S.system.trim() ? [{role: "system", content: S.system.trim()}] : []).concat(hist);
+  const prompt = promptById(c.systemPromptId);
+  const systemContent = prompt ? prompt.content.trim() : "";
+  const msgs = (systemContent ? [{role: "system", content: systemContent}] : []).concat(hist);
   if (continuePrompt){
     // This synthetic turn exists only in the API request, never in c.messages.
     msgs.push({role: "user", content: "Continue."});
@@ -717,8 +912,17 @@ function apiError(j, fallback){
   return e;
 }
 
+function resolveAssistantDisplayName(){
+  if (UI.assistantNameMode === "model") return status.model || S.model || "Assistant";
+  if (UI.assistantNameMode === "custom") return UI.assistantCustomName.trim() || "Assistant";
+  return "Lantern";
+}
 async function generate(c, options = {}){
-  const m = {role: "assistant", content: "", reasoning: ""};
+  const m = {
+    role: "assistant", content: "", reasoning: "",
+    displayName: resolveAssistantDisplayName(),
+    modelName: status.model || S.model || ""
+  };
   if (options.continuePrompt) m.continuation = true;
   c.messages.push(m);
   if (c.title === "New chat"){ const u = c.messages.find(x => x.role === "user"); if (u) c.title = u.content.trim().replace(/\s+/g, " ").slice(0, 48) || "New chat"; }
@@ -989,11 +1193,30 @@ function syncControls(){
                            ["minp", "minp"], ["repeat", "repeat"], ["seed", "seed"], ["temp", "temp"], ["top", "top"]]) $("#" + id).value = S[key];
   $("#tempv").textContent = (+S.temp).toFixed(2);
   $("#topv").textContent = (+S.top).toFixed(2);
-  $("#system").value = S.system;
+  $("#assistantNameMode").value = UI.assistantNameMode;
+  $("#assistantCustomName").value = UI.assistantCustomName;
+  $("#customAssistantNameWrap").hidden = UI.assistantNameMode !== "custom";
   markMode(); markThink();
 }
 
 function bindSettings(){
+  $("#addPrompt").onclick = () => openPromptEditor();
+  $("#promptCancel").onclick = closePromptEditor;
+  $("#promptSave").onclick = savePromptEditor;
+  $("#promptEditor").addEventListener("click", e => {
+    if (e.target === $("#promptEditor")) closePromptEditor();
+  });
+  $("#promptList").addEventListener("change", e => {
+    if (!e.target.classList.contains("prompt-active-toggle")) return;
+    const row = e.target.closest(".prompt-item");
+    if (row) setActivePrompt(row.dataset.promptId, e.target.checked);
+  });
+  $("#promptList").addEventListener("click", e => {
+    const row = e.target.closest(".prompt-item");
+    if (!row) return;
+    if (e.target.classList.contains("edit-prompt")) openPromptEditor(row.dataset.promptId);
+    else if (e.target.classList.contains("delete-prompt")) deletePrompt(row.dataset.promptId);
+  });
   const uiToggles = {
     showEdit:"showEdit",
     showContinue:"showContinue",
@@ -1025,7 +1248,15 @@ function bindSettings(){
   num("seed", "seed", v => { const n = parseInt(v, 10); return Number.isNaN(n) ? -1 : n; });
   $("#temp").oninput = e => { S.temp = +e.target.value; $("#tempv").textContent = S.temp.toFixed(2); saveS(); };
   $("#top").oninput = e => { S.top = +e.target.value; $("#topv").textContent = S.top.toFixed(2); saveS(); };
-  $("#system").oninput = e => { S.system = e.target.value; saveS(); };
+  $("#assistantNameMode").onchange = e => {
+    UI.assistantNameMode = e.target.value;
+    $("#customAssistantNameWrap").hidden = UI.assistantNameMode !== "custom";
+    saveUI();
+  };
+  $("#assistantCustomName").oninput = e => {
+    UI.assistantCustomName = e.target.value;
+    saveUI();
+  };
   $("#model").onchange = e => applyModel(e.target.value);
   document.querySelectorAll("#mode button").forEach(b => { b.onclick = () => { S.mode = b.dataset.v; saveS(); markMode(); }; });
   $("#think").onclick = () => { S.thinking = !S.thinking; saveS(); markThink(); };
@@ -1033,7 +1264,10 @@ function bindSettings(){
 
   $("#search").oninput = e => { query = e.target.value; renderConvs(); };
   $("#title").ondblclick = e => { const c = active(); if (c && e.target.id === "title") renameConv(c.id, e.target); };
-  document.addEventListener("keydown", e => { if (e.key === "Escape" && generating && controller) controller.abort(); });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !$("#promptEditor").hidden){ closePromptEditor(); return; }
+    if (e.key === "Escape" && generating && controller) controller.abort();
+  });
 }
 
 /* ---------- boot ---------- */

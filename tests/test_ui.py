@@ -167,6 +167,98 @@ class UITests(unittest.TestCase):
         # Synthetic prompts are sent to the model but never become visible chat turns.
         expect(self.page.locator(".msg.user")).to_have_count(1)
 
+    def test_assistant_identity_is_snapshotted_per_message(self):
+        self.load_model()
+        self.send("default identity")
+        self.wait_done()
+        expect(self.page.locator(".msg.assistant .role").last).to_have_text("Lantern")
+
+        self.page.click("#settingsToggle")
+        self.page.select_option("#assistantNameMode", "model")
+        self.page.click("#settingsToggle")
+        self.send("model identity")
+        self.wait_done()
+        expect(self.page.locator(".msg.assistant .role").last).to_have_text("test-model.gguf")
+
+        self.page.click("#settingsToggle")
+        self.page.select_option("#assistantNameMode", "custom")
+        self.page.fill("#assistantCustomName", "Nova")
+        self.page.click("#settingsToggle")
+        self.send("custom identity")
+        self.wait_done()
+        expect(self.page.locator(".msg.assistant .role").last).to_have_text("Nova")
+        expect(self.page.locator(".msg.assistant .role").nth(0)).to_have_text("Lantern")
+        expect(self.page.locator(".msg.assistant .role").nth(1)).to_have_text("test-model.gguf")
+
+    def test_system_prompt_library_editor_and_conversation_selection(self):
+        self.load_model()
+        self.page.click("#settingsToggle")
+        self.page.click("#addPrompt")
+        expect(self.page.locator("#promptEditor")).to_be_visible()
+        self.assertEqual(self.page.locator("#promptEditor label").count(), 2)
+        self.assertEqual(self.page.locator("#promptEditor footer button").all_text_contents(), ["Cancel", "Save"])
+        self.assertEqual(self.page.locator("#promptEditor input, #promptEditor textarea").count(), 2)
+        self.page.fill("#promptName", "Roleplay")
+        self.page.fill("#promptContent", "Stay in character and maintain continuity.")
+        self.page.click("#promptSave")
+
+        roleplay = self.page.locator(".prompt-item").first
+        roleplay_id = roleplay.get_attribute("data-prompt-id")
+        roleplay.locator(".prompt-active-toggle").check()
+        self.assertEqual(self.page.locator(".prompt-active-toggle:checked").count(), 1)
+        self.page.click("#settingsToggle")
+        self.send("first conversation")
+        self.wait_done()
+        _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
+        self.assertEqual(request["messages"][0], {
+            "role": "system", "content": "Stay in character and maintain continuity."
+        })
+
+        self.page.click("#settingsToggle")
+        roleplay = self.page.locator(f'.prompt-item[data-prompt-id="{roleplay_id}"]')
+        roleplay.locator(".edit-prompt").click()
+        self.page.fill("#promptContent", "This edit should not apply until saved.")
+        self.page.click("#promptCancel")
+        self.page.click("#settingsToggle")
+        self.send("still original prompt")
+        self.wait_done()
+        _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
+        self.assertEqual(request["messages"][0]["content"], "Stay in character and maintain continuity.")
+
+        self.page.click("#settingsToggle")
+        roleplay = self.page.locator(f'.prompt-item[data-prompt-id="{roleplay_id}"]')
+        roleplay.locator(".edit-prompt").click()
+        self.page.fill("#promptContent", "Updated roleplay instructions.")
+        self.page.click("#promptSave")
+        self.page.click("#settingsToggle")
+        self.send("updated prompt")
+        self.wait_done()
+        _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
+        self.assertEqual(request["messages"][0]["content"], "Updated roleplay instructions.")
+
+        self.page.click("#newChat")
+        self.page.click("#settingsToggle")
+        expect(self.page.locator(f'.prompt-item[data-prompt-id="{roleplay_id}"] .prompt-active-toggle')).to_be_checked()
+        self.page.click("#addPrompt")
+        self.page.fill("#promptName", "Coding")
+        self.page.fill("#promptContent", "Prefer concise, correct code explanations.")
+        self.page.click("#promptSave")
+        coding = self.page.locator(".prompt-item").first
+        coding_id = coding.get_attribute("data-prompt-id")
+        coding.locator(".prompt-active-toggle").check()
+        self.assertEqual(self.page.locator(".prompt-active-toggle:checked").count(), 1)
+        self.page.click("#settingsToggle")
+
+        self.send("second conversation")
+        self.wait_done()
+        _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
+        self.assertEqual(request["messages"][0]["content"], "Prefer concise, correct code explanations.")
+
+        self.page.locator("#convs .conv").nth(1).click()
+        self.page.click("#settingsToggle")
+        expect(self.page.locator(f'.prompt-item[data-prompt-id="{coding_id}"] .prompt-active-toggle')).not_to_be_checked()
+        expect(self.page.locator(f'.prompt-item[data-prompt-id="{roleplay_id}"] .prompt-active-toggle')).to_be_checked()
+
     def test_settings_screen_persists_ui_preferences_and_contains_generation(self):
         self.load_model()
         expect(self.page.locator("#input")).to_have_attribute("placeholder", "Message test-model.gguf")
