@@ -66,6 +66,48 @@ class UITests(unittest.TestCase):
         expect(self.page.locator("#send")).to_have_text("Send", timeout=20000)
 
     # -- tests
+    def test_sidebar_stays_in_viewport_while_chat_scrolls(self):
+        # Simulate a long conversation and an over-height sidebar independently.
+        self.page.evaluate("""
+            () => {
+                const wrap = document.querySelector("#wrap");
+                wrap.innerHTML = Array.from({length: 50}, (_, i) =>
+                    '<div class="msg"><div class="role">Assistant</div>' +
+                    '<div class="body">Long conversation message ' + i + '</div></div>'
+                ).join("");
+                const extra = document.createElement("div");
+                extra.style.height = "1200px";
+                extra.setAttribute("aria-hidden", "true");
+                document.querySelector(".side-scroll").appendChild(extra);
+                document.querySelector("#chat").scrollTop =
+                    document.querySelector("#chat").scrollHeight;
+            }
+        """)
+
+        metrics = self.page.evaluate("""
+            () => {
+                const side = document.querySelector("#side");
+                const sideScroll = document.querySelector(".side-scroll");
+                const chat = document.querySelector("#chat");
+                const rect = side.getBoundingClientRect();
+                return {
+                    sideTop: rect.top,
+                    sideBottom: rect.bottom,
+                    viewportHeight: window.innerHeight,
+                    pageScrollY: window.scrollY,
+                    chatScrollTop: chat.scrollTop,
+                    chatCanScroll: chat.scrollHeight > chat.clientHeight,
+                    sideCanScroll: sideScroll.scrollHeight > sideScroll.clientHeight
+                };
+            }
+        """)
+        self.assertEqual(metrics["sideTop"], 0)
+        self.assertLessEqual(metrics["sideBottom"], metrics["viewportHeight"] + 1)
+        self.assertEqual(metrics["pageScrollY"], 0)
+        self.assertGreater(metrics["chatScrollTop"], 0)
+        self.assertTrue(metrics["chatCanScroll"])
+        self.assertTrue(metrics["sideCanScroll"])
+
     def test_page_loads_and_lists_models(self):
         options = self.page.locator("#model option").all_text_contents()
         self.assertTrue(any("test-model.gguf" in o for o in options))
