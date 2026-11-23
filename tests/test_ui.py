@@ -129,7 +129,7 @@ class UITests(unittest.TestCase):
         )
         self.assertEqual(self.page.locator(".msg.user").count(), 1)
 
-    def test_continue_creates_separate_bubbles_and_extends_previous_text(self):
+    def test_continue_creates_separate_bubbles_with_hidden_prompt(self):
         self.load_model()
         self.send("begin the story")
         self.wait_done()
@@ -141,14 +141,14 @@ class UITests(unittest.TestCase):
         self.last_reply().locator(".continue").click()
         self.wait_done()
         expect(self.page.locator(".msg.assistant")).to_have_count(2)
-        first = self.last_reply().locator(".body").inner_text()
-        self.assertEqual(first, "Continued scene.")
+        self.assertEqual(self.last_reply().locator(".body").inner_text(), "Continued scene.")
 
         _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
-        self.assertIs(request["continue_final_message"], True)
-        self.assertIs(request["add_generation_prompt"], False)
-        self.assertEqual(request["messages"][-1]["role"], "assistant")
-        self.assertEqual(request["messages"][-1]["content"], "The revised scene opens here.")
+        self.assertNotIn("continue_final_message", request)
+        self.assertNotIn("add_generation_prompt", request)
+        self.assertEqual(request["messages"][-1], {"role": "user", "content": "Continue."})
+        self.assertEqual(request["messages"][-2]["role"], "assistant")
+        self.assertEqual(request["messages"][-2]["content"], "The revised scene opens here.")
 
         self.last_reply().locator(".continue").click()
         self.wait_done()
@@ -156,12 +156,15 @@ class UITests(unittest.TestCase):
         self.assertEqual(self.last_reply().locator(".body").inner_text(), "Continued scene.")
 
         _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
-        self.assertIs(request["continue_final_message"], True)
-        self.assertIs(request["add_generation_prompt"], False)
+        self.assertNotIn("continue_final_message", request)
+        self.assertNotIn("add_generation_prompt", request)
+        self.assertEqual(request["messages"][-1], {"role": "user", "content": "Continue."})
+        self.assertEqual(request["messages"][-2]["role"], "assistant")
         self.assertEqual(
-            request["messages"][-1]["content"],
+            request["messages"][-2]["content"],
             "The revised scene opens here. Continued scene."
         )
+        # Synthetic prompts are sent to the model but never become visible chat turns.
         expect(self.page.locator(".msg.user")).to_have_count(1)
 
     def test_delete_message_keeps_following_bubbles_by_default(self):
