@@ -129,30 +129,76 @@ class UITests(unittest.TestCase):
         )
         self.assertEqual(self.page.locator(".msg.user").count(), 1)
 
-    def test_continue_uses_edited_assistant_history_without_user_prompt(self):
+    def test_continue_creates_separate_bubbles_and_extends_previous_text(self):
         self.load_model()
         self.send("begin the story")
         self.wait_done()
 
         self.last_reply().locator(".edit-assistant").click()
-        self.last_reply().locator("textarea.editbox").fill(
-            "The revised scene ends with a mysterious knock."
-        )
+        self.last_reply().locator("textarea.editbox").fill("The revised scene opens here.")
         self.last_reply().locator(".save-assistant").click()
 
-        expect(self.last_reply().locator(".continue")).to_be_visible()
         self.last_reply().locator(".continue").click()
         self.wait_done()
-
-        # Continue adds an assistant turn, not a synthetic user "Continue" message.
-        expect(self.page.locator(".msg.user")).to_have_count(1)
-        _, last = self.app.request("GET", "/last-request", port=self.app.llama_port)
-        self.assertEqual(last["messages"][-1]["role"], "assistant")
-        self.assertEqual(
-            last["messages"][-1]["content"],
-            "The revised scene ends with a mysterious knock."
-        )
         expect(self.page.locator(".msg.assistant")).to_have_count(2)
+        first = self.last_reply().locator(".body").inner_text()
+        self.assertEqual(first, "Continued scene.")
+
+        _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
+        self.assertEqual(request["continue_final_message"], "content")
+        self.assertEqual(request["messages"][-1]["role"], "assistant")
+        self.assertEqual(request["messages"][-1]["content"], "The revised scene opens here.")
+
+        self.last_reply().locator(".continue").click()
+        self.wait_done()
+        expect(self.page.locator(".msg.assistant")).to_have_count(3)
+        self.assertEqual(self.last_reply().locator(".body").inner_text(), "Continued scene.")
+
+        _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
+        self.assertEqual(request["continue_final_message"], "content")
+        self.assertEqual(
+            request["messages"][-1]["content"],
+            "The revised scene opens here. Continued scene."
+        )
+        expect(self.page.locator(".msg.user")).to_have_count(1)
+
+    def test_delete_message_keeps_following_bubbles_by_default(self):
+        self.load_model()
+        self.send("first scene")
+        self.wait_done()
+        self.send("second scene")
+        self.wait_done()
+
+        expect(self.page.locator(".msg")).to_have_count(4)
+        first_user = self.page.locator(".msg.user").first
+        first_user.locator(".delete-message").click()
+        checkbox = self.page.locator(".msg").first.locator(".delete-following")
+        expect(checkbox).not_to_be_checked()
+        self.page.locator(".msg").first.locator(".confirm-delete").click()
+
+        expect(self.page.locator(".msg")).to_have_count(3)
+        expect(self.page.locator(".msg.assistant")).to_have_count(2)
+        expect(self.page.locator(".msg.user")).to_have_count(1)
+        expect(self.page.locator(".msg.assistant").first).to_contain_text("You said: first scene")
+        expect(self.page.locator(".msg.user").first.locator(".body")).to_have_text("second scene")
+
+    def test_delete_message_can_remove_following_bubbles(self):
+        self.load_model()
+        self.send("first scene")
+        self.wait_done()
+        self.send("second scene")
+        self.wait_done()
+
+        first_assistant = self.page.locator(".msg.assistant").first
+        first_assistant.locator(".delete-message").click()
+        checkbox = first_assistant.locator(".delete-following")
+        checkbox.check()
+        first_assistant.locator(".confirm-delete").click()
+
+        expect(self.page.locator(".msg")).to_have_count(1)
+        expect(self.page.locator(".msg.user")).to_have_count(1)
+        expect(self.page.locator(".msg.assistant")).to_have_count(0)
+        expect(self.page.locator(".msg.user").first.locator(".body")).to_have_text("first scene")
 
     def test_page_loads_and_lists_models(self):
         options = self.page.locator("#model option").all_text_contents()
