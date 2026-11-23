@@ -337,14 +337,15 @@ const saveUI = () => store.set("lantern.ui-settings", UI);
 let convs = store.get("lantern.convs", []);
 let activeId = store.get("lantern.active", null);
 let prompts = store.get("lantern.prompts", null); if (!Array.isArray(prompts)) prompts = [];
-let defaultPromptId = store.get("lantern.default-prompt", null);
+let defaultPromptId = store.get("lantern.default-prompt", undefined);
 if (!prompts.length && typeof S.system === "string" && S.system.trim()){
   const migrated = {id:(crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2)),name:"Default",content:S.system};
   prompts.push(migrated); defaultPromptId = migrated.id;
   store.set("lantern.prompts",prompts); store.set("lantern.default-prompt",defaultPromptId);
   for (const c of convs) if (!c.promptId) c.promptId = migrated.id;
   store.set("lantern.convs",convs); delete S.system; store.set("lantern.settings",S);
-} else if (prompts.length && !prompts.some(p => p.id === defaultPromptId)){ defaultPromptId = prompts[0].id; store.set("lantern.default-prompt",defaultPromptId); }
+} else if (defaultPromptId === undefined && prompts.length){ defaultPromptId = prompts[0].id; store.set("lantern.default-prompt",defaultPromptId); }
+else if (defaultPromptId && !prompts.some(p => p.id === defaultPromptId)){ defaultPromptId = null; store.set("lantern.default-prompt",null); }
 for (const c of convs) if (!Object.prototype.hasOwnProperty.call(c,"promptId")) c.promptId = defaultPromptId;
 const savePrompts = () => store.set("lantern.prompts",prompts);
 const promptById = id => prompts.find(p => p.id === id) || null;
