@@ -113,6 +113,8 @@ details.think .think-body{white-space:pre-wrap;margin-top:6px;max-height:320px;o
 .msg .meta{display:flex;gap:12px;align-items:center;font-size:12px;color:var(--muted)}
 .link{border:0;background:none;color:var(--muted);padding:0;font-size:12px}
 .link:hover{color:var(--text)}
+.link.continue{color:var(--accent);font-weight:650}
+.link.continue:hover{text-decoration:underline}
 .err{color:var(--bad);font-size:13px;white-space:pre-wrap}
 .cursor::after{content:"▍";color:var(--accent);animation:pulse 1s infinite;margin-left:1px}
 
@@ -414,7 +416,9 @@ function msgEl(m, i, isLast){
     '<div class="body"></div><div class="err" hidden></div>' +
     '<div class="errbar" hidden><button type="button" class="link trim">Trim oldest messages &amp; retry</button></div>' +
     '<div class="meta"><span class="stats"></span><button type="button" class="link copy">Copy</button>' +
-    (isLast ? '<button type="button" class="link regen">Regenerate</button>' : "") + "</div>";
+    (m.content && !m.error ? '<button type="button" class="link edit-assistant">Edit</button>' : "") +
+    (isLast ? '<button type="button" class="link regen">Regenerate</button>' : "") +
+    (isLast && m.content && !m.error ? '<button type="button" class="link continue">Continue</button>' : "") + "</div>";
   updateEl(el, m, false);
   return el;
 }
@@ -746,6 +750,53 @@ function startEdit(idx){
   ta.focus();
 }
 
+// Assistant edits update the canonical history entry in place. Later turns remain,
+// but every future request will use the revised response.
+function startAssistantEdit(idx){
+  if (generating) return toast("Stop the current reply first.");
+  const c = active(), m = c && c.messages[idx];
+  const el = wrap.querySelector(`.msg[data-idx="${idx}"]`);
+  if (!m || m.role !== "assistant" || !m.content || m.error || !el || el.querySelector("textarea")) return;
+  const ta = document.createElement("textarea");
+  ta.className = "editbox"; ta.value = m.content;
+  ta.rows = Math.min(14, Math.max(3, m.content.split("\n").length));
+  el.querySelector(".body").replaceWith(ta);
+  el.querySelector(".meta").innerHTML =
+    '<button type="button" class="link save-assistant">Save</button>' +
+    '<button type="button" class="link cancel-assistant">Cancel</button>';
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+
+function saveAssistantEdit(idx, ta){
+  if (generating) return toast("Stop the current reply first.");
+  const c = active(), m = c && c.messages[idx];
+  if (!m || m.role !== "assistant" || !ta) return;
+  if (!ta.value.trim()) return toast("An assistant response cannot be empty.");
+
+  m.content = ta.value;
+  // Usage and timing data describe the original generated text.
+  delete m.stats;
+  delete m.usage;
+  delete m.error;
+  delete m.ctxError;
+  delete m.stopped;
+  c.updated = Date.now();
+  saveC(); renderConvs(); renderChat(); renderMeter();
+}
+
+async function continueStory(){
+  if (generating) return;
+  const c = active();
+  const last = c && c.messages[c.messages.length - 1];
+  if (!last || last.role !== "assistant" || !last.content || last.error) return;
+  if (status.state !== "ready") return toast("Load a model first.");
+
+  // generate() appends a blank assistant placeholder, which chatBody() excludes.
+  // The previous assistant response therefore becomes the final request turn.
+  await generate(c);
+}
+
 chat.addEventListener("click", async e => {
   const t = e.target, msg = t.closest(".msg"), idx = msg ? +msg.dataset.idx : -1;
   if (t.classList.contains("codecopy")){
@@ -759,6 +810,14 @@ chat.addEventListener("click", async e => {
     c.messages.pop(); await generate(c);
   } else if (t.classList.contains("edit")){
     startEdit(idx);
+  } else if (t.classList.contains("edit-assistant")){
+    startAssistantEdit(idx);
+  } else if (t.classList.contains("save-assistant")){
+    saveAssistantEdit(idx, msg && msg.querySelector("textarea"));
+  } else if (t.classList.contains("cancel-assistant")){
+    renderChat();
+  } else if (t.classList.contains("continue")){
+    await continueStory();
   } else if (t.classList.contains("cancel")){
     renderChat();
   } else if (t.classList.contains("resend")){
