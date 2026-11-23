@@ -18,7 +18,7 @@ Nothing leaves your machine, and there is nothing to `pip install` or `npm insta
 - Edit and resend an earlier message
 - Thinking toggle, with reasoning shown in a collapsible "Thought process" block
   (works with a separate reasoning field or inline `<think>` tags)
-- A dedicated Settings screen for message controls, composer preferences, temperature, top-p, max tokens, system prompt, and advanced sampling (top-k, min-p, repeat penalty, seed)
+- A dedicated Settings screen for message controls, composer preferences, assistant identity, a named system-prompt library with per-conversation selection, temperature, top-p, max tokens, and advanced sampling (top-k, min-p, repeat penalty, seed)
 - Multiple chats saved in your browser: search, rename (double-click), delete, Markdown export
 - Markdown tables, syntax-highlighted code blocks with copy buttons, tokens/sec per reply
 - Light and dark themes, usable on narrow screens
