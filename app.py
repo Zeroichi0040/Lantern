@@ -235,6 +235,7 @@ class Engine:
             "state": state,
             "cpu_count": os.cpu_count() or 4,
             "server_found": find_server() is not None,
+            "server_pid": self.proc.pid if self.proc is not None else None,
             "models_dir": str(MODELS_DIR),
             "runtime_dir": str(RUNTIME_DIR),
             "version": VERSION,
