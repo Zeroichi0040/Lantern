@@ -139,7 +139,7 @@ class Handler(BaseHTTPRequestHandler):
                 emit({"choices": [{"delta": {key: text}}]})
                 completion += 1
                 delay = 0.05 if "LONG" in user_text else 0.6 if "SLOWTHINK" in user_text and key == "reasoning_content" else 0.01
-            time.sleep(delay)
+                time.sleep(delay)
             emit({
                 "choices": [{"delta": {}, "finish_reason": "stop"}],
                 "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion,
