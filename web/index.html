@@ -541,6 +541,7 @@ function schedule(el, m){
 
 function renderChat(){
   const c = active();
+  renderPromptLibrary();
   wrap.innerHTML = "";
   $("#title").textContent = c ? c.title : "New chat";
   if (!c || !c.messages.length){
@@ -626,8 +627,7 @@ function renameConv(id, anchor){
 }
 
 function newConv(){
-  const current = active();
-  const c = {id: uid(), title: "New chat", messages: [], updated: Date.now(), promptId: current ? current.promptId || null : defaultPromptId};
+  const c = {id: uid(), title: "New chat", messages: [], updated: Date.now(), promptId: defaultPromptId};
   convs.unshift(c); activeId = c.id; saveC(); renderConvs(); renderChat();
   return c;
 }
