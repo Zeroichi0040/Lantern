@@ -14,6 +14,7 @@ Behaviour is chosen by the model file name or by keywords in the last user messa
                                 -> a natural context overflow (for trim-and-retry tests)
   message contains "TABLE"      -> reply includes a markdown table
   message contains "LONG"       -> reply streams ~200 words slowly (for Stop tests)
+  message contains "SLOWTHINK"  -> reasoning chunks are delayed (for timing tests)
 """
 import json
 import sys
@@ -137,7 +138,8 @@ class Handler(BaseHTTPRequestHandler):
             for key, text in pieces:
                 emit({"choices": [{"delta": {key: text}}]})
                 completion += 1
-                time.sleep(0.05 if "LONG" in user_text else 0.01)
+                delay = 0.05 if "LONG" in user_text else 0.6 if "SLOWTHINK" in user_text and key == "reasoning_content" else 0.01
+                time.sleep(delay)
             emit({
                 "choices": [{"delta": {}, "finish_reason": "stop"}],
                 "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion,
