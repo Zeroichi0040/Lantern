@@ -896,7 +896,7 @@ chat.addEventListener("click", async e => {
     const next = Math.min(cur + 2, protectedIndex);
     if (next <= cur) return toast("Nothing left to trim: this one message is too long. Raise Context and reload the model.");
     c.skip = next; c.messages.pop();
-    await generate(c, {continueFinalMessage: retryContinuation});
+    await generate(c, {continuePrompt: retryContinuation});
   }
 });
 async function copy(text){
