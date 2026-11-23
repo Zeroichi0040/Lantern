@@ -155,9 +155,9 @@ details.think .think-body{white-space:pre-wrap;margin-top:6px;max-height:320px;o
 .prompt-info{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
 .prompt-info strong{font-size:13px;font-weight:600;overflow-wrap:anywhere}
 .prompt-info small{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.prompt-active{position:relative;display:inline-flex;align-items:center;flex:none;cursor:pointer}
-.prompt-active input{position:absolute;opacity:0;width:1px;height:1px}
-.prompt-active span{width:36px;height:20px;border-radius:99px;background:var(--line);transition:background .15s;position:relative}
+.prompt-active{position:relative;display:inline-flex;flex-direction:row;align-items:center;gap:0;margin:0;flex:none;cursor:pointer}
+.prompt-active input{position:absolute;inset:0;z-index:2;opacity:0;width:36px;height:20px;margin:0;cursor:pointer}
+.prompt-active span{width:36px;height:20px;border-radius:99px;background:var(--line);transition:background .15s;position:relative;pointer-events:none}
 .prompt-active span:after{content:"";position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .15s}
 .prompt-active input:checked+span{background:var(--accent)}
 .prompt-active input:checked+span:after{transform:translateX(16px)}
