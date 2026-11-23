@@ -729,14 +729,15 @@ function formatDuration(ms){
   return [hours ? hours + "h" : "", minutes ? minutes + "m" : "", seconds + "s"].filter(Boolean).join(" ");
 }
 function activitySummary(m, live){
+  const active = live || (m.startedAt != null && !Number.isFinite(m.workedMs));
   const parts = [];
   if (UI.splitThinkingTime){
     if (Number.isFinite(m.thoughtMs)) parts.push("Thought for " + formatDuration(m.thoughtMs));
-    else if (live && m.thinkingStartedAt != null) parts.push("Thinking " + formatDuration(performance.now() - m.thinkingStartedAt));
+    else if (active && m.thinkingStartedAt != null) parts.push("Thinking " + formatDuration(performance.now() - m.thinkingStartedAt));
   }
   if (m.startedAt != null || Number.isFinite(m.workedMs)){
-    const duration = live ? performance.now() - m.startedAt : m.workedMs;
-    parts.push((live ? "Working " : "Worked for ") + formatDuration(duration));
+    const duration = active ? performance.now() - m.startedAt : m.workedMs;
+    parts.push((active ? "Working " : "Worked for ") + formatDuration(duration));
   }
   return parts.join(", ");
 }
@@ -1025,9 +1026,13 @@ async function generate(c, options = {}){
   m.startedAt = t0;
   const activityEl = el.querySelector(".activity");
   activityEl.textContent = activitySummary(m, true);
-  const activityTimer = setInterval(() => {
-    activityEl.textContent = activitySummary(m, true);
-  }, 250);
+  const activityIndex = c.messages.length - 1;
+  const refreshActivity = () => {
+    if (active() !== c) return;
+    const currentActivity = wrap.querySelector(`.msg[data-idx="${activityIndex}"] .activity`);
+    if (currentActivity) currentActivity.textContent = activitySummary(m, true);
+  };
+  const activityTimer = setInterval(refreshActivity, 250);
   let chunks = 0, timings = null, usage = null;
 
   try {
@@ -1356,7 +1361,15 @@ function bindSettings(){
     control.addEventListener("change", () => {
       UI[key] = control.checked;
       saveUI();
-      if (key === "showEdit" || key === "showContinue" || key === "showDelete" || key === "splitThinkingTime") renderChat();
+      if (key === "showEdit" || key === "showContinue" || key === "showDelete") renderChat();
+      if (key === "splitThinkingTime"){
+        document.querySelectorAll("#wrap .msg.assistant").forEach(message => {
+          const index = Number(message.dataset.idx);
+          const item = active() && active().messages[index];
+          const label = message.querySelector(".activity");
+          if (item && label) label.textContent = activitySummary(item, generating && !Number.isFinite(item.workedMs));
+        });
+      }
       if (key === "modelPlaceholder") updateSend();
     });
   }
