@@ -27,6 +27,7 @@ Nothing leaves your machine, and there is nothing to `pip install` or `npm insta
 
 - Python 3.9+
 - A llama.cpp build that includes `llama-server` (use the build matching your hardware: CPU, Vulkan, CUDA, Metal)
+- Continue requires `llama-server` support for the OpenAI-compatible `continue_final_message` request parameter; older builds may not support it
 - One or more `.gguf` model files
 
 ## Setup
