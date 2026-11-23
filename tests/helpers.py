@@ -104,9 +104,11 @@ class LanternProcess:
         except OSError:
             log_tail = "<log unavailable>"
         raise AssertionError(
-            "never reached state %r, last status: %r, server pid: %r, "
-            "server return code: %r, server log:\\n%s"
-            % (want, status, self.proc.pid, self.proc.poll(), log_tail)
+            "never reached state %r, last status: %r, "
+            "server pid: %r, launcher pid: %r, launcher return code: %r, "
+            "server log:\n%s"
+            % (want, status, status.get("server_pid"), self.proc.pid,
+               self.proc.poll(), log_tail)
         )
 
     def load(self, model="test-model.gguf", **kw):
