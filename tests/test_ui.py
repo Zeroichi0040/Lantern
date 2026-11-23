@@ -146,6 +146,7 @@ class UITests(unittest.TestCase):
 
         _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
         self.assertIs(request["continue_final_message"], True)
+        self.assertIs(request["add_generation_prompt"], False)
         self.assertEqual(request["messages"][-1]["role"], "assistant")
         self.assertEqual(request["messages"][-1]["content"], "The revised scene opens here.")
 
@@ -156,6 +157,7 @@ class UITests(unittest.TestCase):
 
         _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
         self.assertIs(request["continue_final_message"], True)
+        self.assertIs(request["add_generation_prompt"], False)
         self.assertEqual(
             request["messages"][-1]["content"],
             "The revised scene opens here. Continued scene."
@@ -174,6 +176,10 @@ class UITests(unittest.TestCase):
         first_user.locator(".delete-message").click()
         checkbox = self.page.locator(".msg").first.locator(".delete-following")
         expect(checkbox).not_to_be_checked()
+        self.assertEqual(
+            checkbox.locator("xpath=..").evaluate("(el) => getComputedStyle(el).flexDirection"),
+            "row"
+        )
         self.page.locator(".msg").first.locator(".confirm-delete").click()
 
         expect(self.page.locator(".msg")).to_have_count(3)
