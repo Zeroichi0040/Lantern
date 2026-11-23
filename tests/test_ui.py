@@ -113,12 +113,12 @@ class UITests(unittest.TestCase):
         self.send("original scene")
         self.wait_done()
 
-        original = self.last_reply().locator(".body").inner_text()
+        original = self.last_reply().locator(".body p").inner_text()
         self.last_reply().locator(".edit-assistant").click()
         editor = self.last_reply().locator("textarea.editbox")
         editor.fill("Rewritten scene with a different ending.")
         self.last_reply().locator(".cancel-assistant").click()
-        expect(self.last_reply().locator(".body")).to_have_text(original)
+        expect(self.last_reply().locator(".body p")).to_have_text(original)
 
         self.last_reply().locator(".edit-assistant").click()
         editor = self.last_reply().locator("textarea.editbox")
