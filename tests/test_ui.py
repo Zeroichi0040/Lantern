@@ -108,6 +108,52 @@ class UITests(unittest.TestCase):
         self.assertTrue(metrics["chatCanScroll"])
         self.assertTrue(metrics["sideCanScroll"])
 
+    def test_assistant_response_can_be_edited_and_cancelled(self):
+        self.load_model()
+        self.send("original scene")
+        self.wait_done()
+
+        original = self.last_reply().locator(".body").inner_text()
+        self.last_reply().locator(".edit-assistant").click()
+        editor = self.last_reply().locator("textarea.editbox")
+        editor.fill("Rewritten scene with a different ending.")
+        self.last_reply().locator(".cancel-assistant").click()
+        expect(self.last_reply().locator(".body")).to_have_text(original)
+
+        self.last_reply().locator(".edit-assistant").click()
+        editor = self.last_reply().locator("textarea.editbox")
+        editor.fill("Rewritten scene with a different ending.")
+        self.last_reply().locator(".save-assistant").click()
+        expect(self.last_reply().locator(".body")).to_contain_text(
+            "Rewritten scene with a different ending."
+        )
+        self.assertEqual(self.page.locator(".msg.user").count(), 1)
+
+    def test_continue_uses_edited_assistant_history_without_user_prompt(self):
+        self.load_model()
+        self.send("begin the story")
+        self.wait_done()
+
+        self.last_reply().locator(".edit-assistant").click()
+        self.last_reply().locator("textarea.editbox").fill(
+            "The revised scene ends with a mysterious knock."
+        )
+        self.last_reply().locator(".save-assistant").click()
+
+        expect(self.last_reply().locator(".continue")).to_be_visible()
+        self.last_reply().locator(".continue").click()
+        self.wait_done()
+
+        # Continue adds an assistant turn, not a synthetic user "Continue" message.
+        expect(self.page.locator(".msg.user")).to_have_count(1)
+        _, last = self.app.request("GET", "/last-request", port=self.app.llama_port)
+        self.assertEqual(last["messages"][-1]["role"], "assistant")
+        self.assertEqual(
+            last["messages"][-1]["content"],
+            "The revised scene ends with a mysterious knock."
+        )
+        expect(self.page.locator(".msg.assistant")).to_have_count(2)
+
     def test_page_loads_and_lists_models(self):
         options = self.page.locator("#model option").all_text_contents()
         self.assertTrue(any("test-model.gguf" in o for o in options))
