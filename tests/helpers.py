@@ -93,7 +93,17 @@ class LanternProcess:
             if status.get("state") == want:
                 return status
             time.sleep(0.15)
-        raise AssertionError("never reached state %r, last status: %r" % (want, status))
+
+        log_path = self.home / "llama-server.log"
+        try:
+            log_tail = "\\n".join(log_path.read_text(errors="replace").splitlines()[-30:])
+        except OSError:
+            log_tail = "<log unavailable>"
+        raise AssertionError(
+            "never reached state %r, last status: %r, server pid: %r, "
+            "server return code: %r, server log:\\n%s"
+            % (want, status, self.proc.pid, self.proc.poll(), log_tail)
+        )
 
     def load(self, model="test-model.gguf", **kw):
         body = {"model": model, "mode": "cpu", "ctx": 4096, "threads": 2}
