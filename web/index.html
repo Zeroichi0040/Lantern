@@ -143,6 +143,14 @@ details.think .think-body{white-space:pre-wrap;margin-top:6px;max-height:320px;o
 .setting-row strong{font-size:13px;font-weight:550}
 .setting-row small{font-size:12px;color:var(--muted);font-weight:400}
 .setting-row input[type=checkbox]{width:18px;height:18px;margin:0;accent-color:var(--accent);flex:none}
+.prompt-list{display:flex;flex-direction:column;gap:8px}.prompt-item{display:flex;align-items:center;gap:12px;padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel)}.prompt-item.active{border-color:var(--accent)}
+.prompt-info{min-width:0;flex:1;display:flex;flex-direction:column;gap:3px}.prompt-info strong{font-size:13px}.prompt-info small{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prompt-toggle{width:38px;height:22px;position:relative;flex:none}.prompt-toggle input{opacity:0;width:0;height:0}.prompt-toggle span{position:absolute;inset:0;border-radius:99px;background:var(--line);cursor:pointer;transition:.15s}.prompt-toggle span:before{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;border-radius:50%;background:white;transition:.15s}.prompt-toggle input:checked+span{background:var(--accent)}.prompt-toggle input:checked+span:before{transform:translateX(16px)}
+.prompt-actions{display:flex;align-items:center;gap:10px}.prompt-actions button{white-space:nowrap}
+#promptModal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:18px}#promptModal[hidden]{display:none}
+.prompt-dialog{width:min(640px,100%);max-height:min(88vh,820px);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 20px 70px rgba(0,0,0,.4);overflow:hidden}
+.prompt-dialog header{padding:18px 22px;border-bottom:1px solid var(--line);font-weight:650;font-size:16px}.prompt-dialog .prompt-fields{padding:20px 22px;display:flex;flex-direction:column;gap:16px;overflow-y:auto}.prompt-dialog label{display:flex;flex-direction:column;gap:7px;font-size:13px;font-weight:600}
+.prompt-dialog input,.prompt-dialog textarea{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--text);font:inherit;font-weight:400}.prompt-dialog textarea{min-height:260px;resize:vertical;line-height:1.5}.prompt-dialog footer{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid var(--line)}
 #settingsTitle{font-weight:600;flex:1}
 #app.settings-open #title,#app.settings-open #meter,#app.settings-open #export,#app.settings-open #menu{display:none!important}
 
@@ -239,6 +247,16 @@ details.adv .grid2{margin-top:8px}
         <h1>Settings</h1>
         <p class="settings-intro">Customize message actions, the composer, and generation behavior.</p>
         <section class="card settings-card">
+          <h3>Assistant identity</h3>
+          <label class="setting-row"><span><strong>Assistant name</strong><small>Choose how assistant messages are labeled</small></span><select id="assistantNameMode" style="max-width:210px"><option value="lantern">Lantern</option><option value="model">Current model name</option><option value="custom">Custom name</option></select></label>
+          <label id="customAssistantNameRow" class="setting-row" hidden><span><strong>Custom name</strong><small>Used for all assistant messages</small></span><input id="customAssistantName" type="text" maxlength="60" placeholder="Assistant name" style="max-width:210px"></label>
+        </section>
+        <section class="card settings-card">
+          <h3>System prompts</h3><p class="hint">Choose one prompt for this conversation. Your selection is saved separately for each chat.</p>
+          <div id="promptList" class="prompt-list"></div>
+          <div class="row" style="justify-content:flex-end"><button type="button" class="btn" id="addPrompt">+ Add system prompt</button></div>
+        </section>
+        <section class="card settings-card">
           <h3>Message actions</h3>
           <label class="setting-row"><span><strong>Show Edit</strong><small>Show the Edit action on user and assistant messages</small></span><input type="checkbox" id="showEdit"></label>
           <label class="setting-row"><span><strong>Show Continue</strong><small>Show Continue on the latest completed assistant response</small></span><input type="checkbox" id="showContinue"></label>
@@ -263,7 +281,6 @@ details.adv .grid2{margin-top:8px}
               <label>Seed (-1 = random)<input id="seed" type="number" step="1"></label>
             </div>
           </details>
-          <label>System prompt<textarea id="system" rows="3" placeholder="Optional instructions for every chat"></textarea></label>
         </details>
       </div>
     </section>
@@ -278,6 +295,16 @@ details.adv .grid2{margin-top:8px}
       </div>
     </form>
   </main>
+</div>
+<div id="promptModal" hidden>
+  <form class="prompt-dialog" id="promptForm" autocomplete="off">
+    <header id="promptModalTitle">Edit Prompt</header>
+    <div class="prompt-fields">
+      <label>Name<input id="promptName" type="text" maxlength="80" required></label>
+      <label>Content<textarea id="promptContent" spellcheck="false"></textarea></label>
+    </div>
+    <footer><button type="button" class="btn" id="cancelPrompt">Cancel</button><button type="submit" class="btn primary">Save</button></footer>
+  </form>
 </div>
 <div id="toast" role="status"></div>
 
@@ -301,12 +328,27 @@ const MODEL_KEYS = ["mode", "ctx", "threads", "thinking", "temp", "top", "topk",
 const defaults = {model:"", mode:"cpu", ctx:4096, threads:4, temp:0.7, top:0.95, topk:40, minp:0.05, repeat:1, seed:-1, maxtok:0, system:"", thinking:true, perModel:{}};
 let S = {...defaults, ...store.get("lantern.settings", {})};
 if (!S.perModel || typeof S.perModel !== "object") S.perModel = {};
-const uiDefaults = {showEdit:true, showContinue:true, showDelete:true, deleteFollowing:false, modelPlaceholder:true};
+const uiDefaults = {showEdit:true, showContinue:true, showDelete:true, deleteFollowing:false, modelPlaceholder:true, assistantNameMode:"lantern", customAssistantName:""};
 let UI = {...uiDefaults, ...store.get("lantern.ui-settings", {})};
-for (const key of Object.keys(uiDefaults)) if (typeof UI[key] !== "boolean") UI[key] = uiDefaults[key];
+for (const key of ["showEdit","showContinue","showDelete","deleteFollowing","modelPlaceholder"]) if (typeof UI[key] !== "boolean") UI[key] = uiDefaults[key];
+if (!["lantern","model","custom"].includes(UI.assistantNameMode)) UI.assistantNameMode = "lantern";
+if (typeof UI.customAssistantName !== "string") UI.customAssistantName = "";
 const saveUI = () => store.set("lantern.ui-settings", UI);
 let convs = store.get("lantern.convs", []);
 let activeId = store.get("lantern.active", null);
+let prompts = store.get("lantern.prompts", null); if (!Array.isArray(prompts)) prompts = [];
+let defaultPromptId = store.get("lantern.default-prompt", null);
+if (!prompts.length && typeof S.system === "string" && S.system.trim()){
+  const migrated = {id:(crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2)),name:"Default",content:S.system};
+  prompts.push(migrated); defaultPromptId = migrated.id;
+  store.set("lantern.prompts",prompts); store.set("lantern.default-prompt",defaultPromptId);
+  for (const c of convs) if (!c.promptId) c.promptId = migrated.id;
+  store.set("lantern.convs",convs); delete S.system; store.set("lantern.settings",S);
+} else if (prompts.length && !prompts.some(p => p.id === defaultPromptId)){ defaultPromptId = prompts[0].id; store.set("lantern.default-prompt",defaultPromptId); }
+for (const c of convs) if (!Object.prototype.hasOwnProperty.call(c,"promptId")) c.promptId = defaultPromptId;
+const savePrompts = () => store.set("lantern.prompts",prompts);
+const promptById = id => prompts.find(p => p.id === id) || null;
+let editingPromptId = null;
 let status = {state:"offline"};
 let generating = false, controller = null, threadsTouched = !!store.get("lantern.settings", null);
 
@@ -436,6 +478,11 @@ function view(m){
 }
 
 /* ---------- rendering ---------- */
+function assistantName(m){
+  if (UI.assistantNameMode === "custom") return UI.customAssistantName.trim() || "Assistant";
+  if (UI.assistantNameMode === "model") return m.modelName || "Unknown model";
+  return "Lantern";
+}
 function msgEl(m, i, isLast){
   const el = document.createElement("div");
   el.className = "msg " + m.role;
@@ -449,7 +496,7 @@ function msgEl(m, i, isLast){
     if (!el.querySelector(".meta").children.length) el.querySelector(".meta").hidden = true;
     return el;
   }
-  el.innerHTML = '<div class="role">Lantern</div>' +
+  el.innerHTML = `<div class="role">${esc(assistantName(m))}</div>` +
     '<details class="think" hidden><summary>Thought process</summary><div class="think-body"></div></details>' +
     '<div class="body"></div><div class="err" hidden></div>' +
     '<div class="errbar" hidden><button type="button" class="link trim">Trim oldest messages &amp; retry</button></div>' +
@@ -579,7 +626,8 @@ function renameConv(id, anchor){
 }
 
 function newConv(){
-  const c = {id: uid(), title: "New chat", messages: [], updated: Date.now()};
+  const current = active();
+  const c = {id: uid(), title: "New chat", messages: [], updated: Date.now(), promptId: current ? current.promptId || null : defaultPromptId};
   convs.unshift(c); activeId = c.id; saveC(); renderConvs(); renderChat();
   return c;
 }
@@ -690,7 +738,8 @@ function chatBody(c, continuePrompt = false){
     else messages.push(item);
     return messages;
   }, []);
-  const msgs = (S.system.trim() ? [{role: "system", content: S.system.trim()}] : []).concat(hist);
+  const selectedPrompt = promptById(c.promptId);
+  const msgs = (selectedPrompt && selectedPrompt.content.trim() ? [{role: "system", content: selectedPrompt.content.trim()}] : []).concat(hist);
   if (continuePrompt){
     // This synthetic turn exists only in the API request, never in c.messages.
     msgs.push({role: "user", content: "Continue."});
@@ -718,7 +767,7 @@ function apiError(j, fallback){
 }
 
 async function generate(c, options = {}){
-  const m = {role: "assistant", content: "", reasoning: ""};
+  const m = {role: "assistant", content: "", reasoning: "", modelName: status.model || S.model || "Unknown model"};
   if (options.continuePrompt) m.continuation = true;
   c.messages.push(m);
   if (c.title === "New chat"){ const u = c.messages.find(x => x.role === "user"); if (u) c.title = u.content.trim().replace(/\s+/g, " ").slice(0, 48) || "New chat"; }
@@ -947,6 +996,38 @@ async function copy(text){
   catch { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
 }
 
+function renderPromptLibrary(){
+  const list=$("#promptList"),c=active(),selectedId=c?c.promptId||null:defaultPromptId;list.innerHTML="";
+  if(!prompts.length){list.innerHTML='<div class="hint">No saved system prompts yet. Add one to get started.</div>';return;}
+  for(const p of prompts){
+    const row=document.createElement("div");row.className="prompt-item"+(p.id===selectedId?" active":"");
+    const info=document.createElement("div");info.className="prompt-info";
+    const name=document.createElement("strong");name.textContent=p.name;
+    const preview=document.createElement("small");preview.textContent=p.content||"Empty prompt";info.append(name,preview);
+    const toggle=document.createElement("label");toggle.className="prompt-toggle";toggle.title="Use this prompt for the current conversation";
+    const check=document.createElement("input");check.type="checkbox";check.checked=p.id===selectedId;
+    const track=document.createElement("span");toggle.append(check,track);
+    check.addEventListener("change",()=>{const cur=active();if(cur){cur.promptId=check.checked?p.id:null;cur.updated=Date.now();saveC();}else{defaultPromptId=check.checked?p.id:null;store.set("lantern.default-prompt",defaultPromptId);}renderPromptLibrary();});
+    const actions=document.createElement("div");actions.className="prompt-actions";
+    const edit=document.createElement("button");edit.type="button";edit.className="link";edit.textContent="Edit";edit.addEventListener("click",()=>openPromptEditor(p.id));
+    const del=document.createElement("button");del.type="button";del.className="link";del.textContent="Delete";
+    del.addEventListener("click",()=>{if(!confirm(`Delete the system prompt “${p.name}”?`))return;prompts=prompts.filter(x=>x.id!==p.id);if(defaultPromptId===p.id){defaultPromptId=null;store.set("lantern.default-prompt",null);}for(const conv of convs)if(conv.promptId===p.id)conv.promptId=null;savePrompts();saveC();renderPromptLibrary();});
+    actions.append(edit,del);row.append(info,toggle,actions);list.appendChild(row);
+  }
+}
+function openPromptEditor(id=null){
+  if(generating)return toast("Stop the current reply before editing prompts.");
+  const p=promptById(id);editingPromptId=id;$("#promptModalTitle").textContent=id?"Edit Prompt":"New Prompt";
+  $("#promptName").value=p?p.name:"";$("#promptContent").value=p?p.content:"";$("#promptModal").hidden=false;$("#promptName").focus();
+}
+function closePromptEditor(){$("#promptModal").hidden=true;editingPromptId=null;}
+function bindPromptLibrary(){
+  $("#addPrompt").addEventListener("click",()=>openPromptEditor());
+  $("#cancelPrompt").addEventListener("click",closePromptEditor);
+  $("#promptForm").addEventListener("submit",e=>{e.preventDefault();const name=$("#promptName").value.trim();if(!name)return toast("Give this prompt a name.");const content=$("#promptContent").value;if(editingPromptId){const p=promptById(editingPromptId);if(p){p.name=name;p.content=content;}}else prompts.push({id:uid(),name,content});savePrompts();closePromptEditor();renderPromptLibrary();});
+  $("#promptModal").addEventListener("click",e=>{if(e.target.id==="promptModal")closePromptEditor();});
+  renderPromptLibrary();
+}
 function setSettingsOpen(open){
   $("#settingsPanel").hidden = !open;
   $("#chat").hidden = open;
@@ -960,7 +1041,7 @@ function setSettingsOpen(open){
   button.title = open ? "Back to chat" : "Settings";
   if (!open) input.focus();
 }
-$("#settingsToggle").onclick = () => setSettingsOpen($("#settingsPanel").hidden);
+$("#settingsToggle").onclick = () => {setSettingsOpen($("#settingsPanel").hidden);if(!$("#settingsPanel").hidden)renderPromptLibrary();};
 $("#newChat").onclick = () => { if (generating) return toast("Stop the current reply first."); newConv(); $("#app").classList.remove("open"); input.focus(); };
 $("#menu").onclick = () => $("#app").classList.toggle("open");
 $("#closeSide").onclick = () => $("#app").classList.remove("open");
@@ -989,11 +1070,15 @@ function syncControls(){
                            ["minp", "minp"], ["repeat", "repeat"], ["seed", "seed"], ["temp", "temp"], ["top", "top"]]) $("#" + id).value = S[key];
   $("#tempv").textContent = (+S.temp).toFixed(2);
   $("#topv").textContent = (+S.top).toFixed(2);
-  $("#system").value = S.system;
   markMode(); markThink();
 }
 
 function bindSettings(){
+  const identityMode = $("#assistantNameMode");
+  identityMode.value = UI.assistantNameMode; $("#customAssistantName").value = UI.customAssistantName;
+  $("#customAssistantNameRow").hidden = UI.assistantNameMode !== "custom";
+  identityMode.addEventListener("change",()=>{UI.assistantNameMode=identityMode.value;$("#customAssistantNameRow").hidden=UI.assistantNameMode!=="custom";saveUI();renderChat();});
+  $("#customAssistantName").addEventListener("input",e=>{UI.customAssistantName=e.target.value;saveUI();renderChat();});
   const uiToggles = {
     showEdit:"showEdit",
     showContinue:"showContinue",
@@ -1025,11 +1110,11 @@ function bindSettings(){
   num("seed", "seed", v => { const n = parseInt(v, 10); return Number.isNaN(n) ? -1 : n; });
   $("#temp").oninput = e => { S.temp = +e.target.value; $("#tempv").textContent = S.temp.toFixed(2); saveS(); };
   $("#top").oninput = e => { S.top = +e.target.value; $("#topv").textContent = S.top.toFixed(2); saveS(); };
-  $("#system").oninput = e => { S.system = e.target.value; saveS(); };
   $("#model").onchange = e => applyModel(e.target.value);
   document.querySelectorAll("#mode button").forEach(b => { b.onclick = () => { S.mode = b.dataset.v; saveS(); markMode(); }; });
   $("#think").onclick = () => { S.thinking = !S.thinking; saveS(); markThink(); };
   syncControls();
+  bindPromptLibrary();
 
   $("#search").oninput = e => { query = e.target.value; renderConvs(); };
   $("#title").ondblclick = e => { const c = active(); if (c && e.target.id === "title") renameConv(c.id, e.target); };
@@ -1039,7 +1124,7 @@ function bindSettings(){
 /* ---------- boot ---------- */
 bindSettings();
 if (!active()) activeId = convs[0] ? convs[0].id : null;
-renderConvs(); renderChat(); updateSend();
+renderConvs(); renderChat(); renderPromptLibrary(); updateSend();
 loadModels().then(poll);
 })();
 </script>
