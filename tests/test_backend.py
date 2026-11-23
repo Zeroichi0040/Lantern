@@ -1,7 +1,12 @@
 import http.client
 import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
+import app as lantern
 from helpers import LanternProcess
 
 
@@ -22,6 +27,26 @@ class BackendTests(unittest.TestCase):
 
     def setUp(self):
         self.app.request("POST", "/api/stop", {})
+
+    # -- workspace configuration
+    def test_default_home_detects_shared_llm_lab_layout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "models").mkdir()
+            (workspace / "llama.cpp").mkdir()
+            with mock.patch.object(lantern, "HERE", workspace / "lantern"):
+                with mock.patch.dict(os.environ, {"LANTERN_HOME": ""}):
+                    self.assertEqual(lantern.default_home(), workspace)
+
+    def test_explicit_home_overrides_shared_workspace_detection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "models").mkdir()
+            (workspace / "llama.cpp").mkdir()
+            override = workspace / "custom-home"
+            with mock.patch.object(lantern, "HERE", workspace / "lantern"):
+                with mock.patch.dict(os.environ, {"LANTERN_HOME": str(override)}):
+                    self.assertEqual(lantern.default_home(), override)
 
     # -- discovery
     def test_models_listing_hides_shards_and_mmproj(self):

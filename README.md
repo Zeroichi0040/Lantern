@@ -29,13 +29,20 @@ Nothing leaves your machine, and there is nothing to `pip install` or `npm insta
 
 ## Setup
 
-Lantern keeps everything in one folder (default `~/lantern-lab`, created on first run):
+Lantern can use a shared workspace. When you clone it as a folder beside
+`models/` and `llama.cpp/`, it automatically uses that parent folder:
 
 ```
-lantern-lab/
+llm-lab/
+├── lantern/      # this repository
 ├── models/       # put .gguf files here
-└── llama.cpp/    # extract llama-server (+ its DLLs/libs) here
+├── llama.cpp/    # llama-server (+ its DLLs/libs)
+└── studio/       # optional, unrelated projects
 ```
+
+That layout is detected automatically. Otherwise Lantern uses
+`~/lantern-lab` (created on first run). Set `LANTERN_HOME` to choose
+another workspace explicitly.
 
 If `llama-server` is already on your `PATH`, you can skip the `llama.cpp/` folder.
 
@@ -65,6 +72,7 @@ Then open <http://127.0.0.1:8080> (`--open` does it for you).
 | `LANTERN_HOME` | `~/lantern-lab` | Base folder |
 | `LANTERN_MODELS` | `$LANTERN_HOME/models` | Models folder |
 | `LANTERN_LLAMA_SERVER` | auto-detected | Explicit path to `llama-server` |
+| `LANTERN_LOG_FILE` | `$LANTERN_HOME/lantern-server.log` | Lantern's server log file |
 | `LANTERN_PORT` | `8080` | UI port |
 | `LANTERN_LLAMA_PORT` | UI port + 1 | llama-server port |
 
@@ -73,7 +81,7 @@ Then open <http://127.0.0.1:8080> (`--open` does it for you).
 - Both services bind to `127.0.0.1` only.
 - Requests are rejected unless the `Host` and `Origin` headers point at Lantern itself,
   which blocks other websites (and DNS-rebinding tricks) from driving your local model.
-- Chats live in your browser's local storage. The model server log is `$LANTERN_HOME/llama-server.log`.
+- Chats live in your browser's local storage. Lantern writes its model server log to `$LANTERN_HOME/lantern-server.log` by default, so it does not overwrite an existing `llama-server.log`.
 
 ## Development and tests
 

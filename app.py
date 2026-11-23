@@ -23,10 +23,23 @@ VERSION = "1.0.0"
 HERE = Path(__file__).resolve().parent
 WEB_DIR = HERE / "web"
 
-HOME = Path(os.environ.get("LANTERN_HOME", Path.home() / "lantern-lab")).expanduser()
+def default_home():
+    """Use a sibling llama.cpp/models workspace when Lantern is cloned into one."""
+    override = os.environ.get("LANTERN_HOME")
+    if override:
+        return Path(override).expanduser()
+
+    workspace = HERE.parent
+    if (workspace / "llama.cpp").is_dir() and (workspace / "models").is_dir():
+        return workspace
+
+    return Path.home() / "lantern-lab"
+
+
+HOME = default_home()
 MODELS_DIR = Path(os.environ.get("LANTERN_MODELS", HOME / "models")).expanduser()
 RUNTIME_DIR = HOME / "llama.cpp"
-LOG_FILE = HOME / "llama-server.log"
+LOG_FILE = Path(os.environ.get("LANTERN_LOG_FILE", HOME / "lantern-server.log")).expanduser()
 UI_PORT = int(os.environ.get("LANTERN_PORT", "8080"))
 LLAMA_PORT = int(os.environ.get("LANTERN_LLAMA_PORT", str(UI_PORT + 1)))
 EXE_NAME = "llama-server.exe" if os.name == "nt" else "llama-server"
@@ -116,14 +129,16 @@ class Engine:
         return self.proc is not None and self.proc.poll() is None
 
     def _health(self):
+        conn = http.client.HTTPConnection("127.0.0.1", LLAMA_PORT, timeout=1)
         try:
-            conn = http.client.HTTPConnection("127.0.0.1", LLAMA_PORT, timeout=1)
             conn.request("GET", "/health")
-            ok = conn.getresponse().status == 200
-            conn.close()
-            return ok
-        except OSError:
+            response = conn.getresponse()
+            response.read()
+            return response.status == 200
+        except (OSError, http.client.HTTPException):
             return False
+        finally:
+            conn.close()
 
     def ready(self):
         return self.running() and self._health()
@@ -179,7 +194,22 @@ class Engine:
 
     def _stop_locked(self):
         if self.proc is not None and self.proc.poll() is None:
-            self.proc.terminate()
+            if os.name == "nt":
+                # Popen may own a cmd.exe wrapper (e.g. a .bat launcher) whose
+                # Python/server child inherits the log handle. Kill the tree.
+                try:
+                    subprocess.run(
+                        ["taskkill", "/PID", str(self.proc.pid), "/T", "/F"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        check=False,
+                        timeout=10,
+                    )
+                except (OSError, subprocess.TimeoutExpired):
+                    self.proc.kill()
+            else:
+                self.proc.terminate()
+
             try:
                 self.proc.wait(timeout=8)
             except subprocess.TimeoutExpired:
@@ -205,6 +235,7 @@ class Engine:
             "state": state,
             "cpu_count": os.cpu_count() or 4,
             "server_found": find_server() is not None,
+            "server_pid": self.proc.pid if self.proc is not None else None,
             "models_dir": str(MODELS_DIR),
             "runtime_dir": str(RUNTIME_DIR),
             "version": VERSION,

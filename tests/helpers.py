@@ -27,7 +27,10 @@ def make_wrapper(directory):
         path.write_text('@echo off\r\n"%s" "%s" %%*\r\n' % (sys.executable, FAKE))
     else:
         path = Path(directory) / "llama-server"
-        path.write_text('#!/bin/sh\nexec "%s" "%s" "$@"\n' % (sys.executable, FAKE))
+        # Use a direct Python shebang instead of a shell wrapper. This avoids
+        # leaving an extra shell process between Lantern and the fake server.
+        path.write_text("#!%s\nimport runpy\nrunpy.run_path(%r, run_name='__main__')\n"
+                        % (sys.executable, str(FAKE)))
         path.chmod(path.stat().st_mode | stat.S_IXUSR)
     return path
 
@@ -93,7 +96,20 @@ class LanternProcess:
             if status.get("state") == want:
                 return status
             time.sleep(0.15)
-        raise AssertionError("never reached state %r, last status: %r" % (want, status))
+
+        log_path = self.home / "lantern-server.log"
+        try:
+            with log_path.open("r", encoding="utf-8", errors="replace") as log_file:
+                log_tail = "\n".join(log_file.read().splitlines()[-30:])
+        except OSError:
+            log_tail = "<log unavailable>"
+        raise AssertionError(
+            "never reached state %r, last status: %r, "
+            "server pid: %r, launcher pid: %r, launcher return code: %r, "
+            "server log:\n%s"
+            % (want, status, status.get("server_pid"), self.proc.pid,
+               self.proc.poll(), log_tail)
+        )
 
     def load(self, model="test-model.gguf", **kw):
         body = {"model": model, "mode": "cpu", "ctx": 4096, "threads": 2}
