@@ -39,7 +39,7 @@ def default_home():
 HOME = default_home()
 MODELS_DIR = Path(os.environ.get("LANTERN_MODELS", HOME / "models")).expanduser()
 RUNTIME_DIR = HOME / "llama.cpp"
-LOG_FILE = HOME / "llama-server.log"
+LOG_FILE = Path(os.environ.get("LANTERN_LOG_FILE", HOME / "lantern-server.log")).expanduser()
 UI_PORT = int(os.environ.get("LANTERN_PORT", "8080"))
 LLAMA_PORT = int(os.environ.get("LANTERN_LLAMA_PORT", str(UI_PORT + 1)))
 EXE_NAME = "llama-server.exe" if os.name == "nt" else "llama-server"
