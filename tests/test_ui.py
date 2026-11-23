@@ -145,7 +145,7 @@ class UITests(unittest.TestCase):
         self.assertEqual(first, "Continued scene.")
 
         _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
-        self.assertEqual(request["continue_final_message"], "content")
+        self.assertIs(request["continue_final_message"], True)
         self.assertEqual(request["messages"][-1]["role"], "assistant")
         self.assertEqual(request["messages"][-1]["content"], "The revised scene opens here.")
 
@@ -155,7 +155,7 @@ class UITests(unittest.TestCase):
         self.assertEqual(self.last_reply().locator(".body").inner_text(), "Continued scene.")
 
         _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
-        self.assertEqual(request["continue_final_message"], "content")
+        self.assertIs(request["continue_final_message"], True)
         self.assertEqual(
             request["messages"][-1]["content"],
             "The revised scene opens here. Continued scene."
