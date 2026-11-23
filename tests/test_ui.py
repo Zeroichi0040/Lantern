@@ -76,7 +76,7 @@ class UITests(unittest.TestCase):
                     '<div class="body">Long conversation message ' + i + '</div></div>'
                 ).join("");
                 const extra = document.createElement("div");
-                extra.style.height = "1200px";
+                extra.style.cssText = "height:1200px;flex:0 0 1200px";
                 extra.setAttribute("aria-hidden", "true");
                 document.querySelector(".side-scroll").appendChild(extra);
                 document.querySelector("#chat").scrollTop =
@@ -107,6 +107,248 @@ class UITests(unittest.TestCase):
         self.assertGreater(metrics["chatScrollTop"], 0)
         self.assertTrue(metrics["chatCanScroll"])
         self.assertTrue(metrics["sideCanScroll"])
+
+    def test_assistant_response_can_be_edited_and_cancelled(self):
+        self.load_model()
+        self.send("original scene")
+        self.wait_done()
+
+        original = self.last_reply().locator(".body p").inner_text()
+        self.last_reply().locator(".edit-assistant").click()
+        editor = self.last_reply().locator("textarea.editbox")
+        editor.fill("Rewritten scene with a different ending.")
+        self.last_reply().locator(".cancel-assistant").click()
+        expect(self.last_reply().locator(".body p")).to_have_text(original)
+
+        self.last_reply().locator(".edit-assistant").click()
+        editor = self.last_reply().locator("textarea.editbox")
+        editor.fill("Rewritten scene with a different ending.")
+        self.last_reply().locator(".save-assistant").click()
+        expect(self.last_reply().locator(".body")).to_contain_text(
+            "Rewritten scene with a different ending."
+        )
+        self.assertEqual(self.page.locator(".msg.user").count(), 1)
+
+    def test_continue_creates_separate_bubbles_with_hidden_prompt(self):
+        self.load_model()
+        self.send("begin the story")
+        self.wait_done()
+
+        self.last_reply().locator(".edit-assistant").click()
+        self.last_reply().locator("textarea.editbox").fill("The revised scene opens here.")
+        self.last_reply().locator(".save-assistant").click()
+
+        self.last_reply().locator(".continue").click()
+        self.wait_done()
+        expect(self.page.locator(".msg.assistant")).to_have_count(2)
+        self.assertEqual(self.last_reply().locator(".body").inner_text(), "Continued scene.")
+
+        _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
+        self.assertNotIn("continue_final_message", request)
+        self.assertNotIn("add_generation_prompt", request)
+        self.assertEqual(request["messages"][-1], {"role": "user", "content": "Continue."})
+        self.assertEqual(request["messages"][-2]["role"], "assistant")
+        self.assertEqual(request["messages"][-2]["content"], "The revised scene opens here.")
+
+        self.last_reply().locator(".continue").click()
+        self.wait_done()
+        expect(self.page.locator(".msg.assistant")).to_have_count(3)
+        self.assertEqual(self.last_reply().locator(".body").inner_text(), "Continued scene.")
+
+        _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
+        self.assertNotIn("continue_final_message", request)
+        self.assertNotIn("add_generation_prompt", request)
+        self.assertEqual(request["messages"][-1], {"role": "user", "content": "Continue."})
+        self.assertEqual(request["messages"][-2]["role"], "assistant")
+        self.assertEqual(
+            request["messages"][-2]["content"],
+            "The revised scene opens here. Continued scene."
+        )
+        # Synthetic prompts are sent to the model but never become visible chat turns.
+        expect(self.page.locator(".msg.user")).to_have_count(1)
+
+    def test_assistant_identity_is_snapshotted_per_message(self):
+        self.load_model()
+        self.send("default identity")
+        self.wait_done()
+        expect(self.page.locator(".msg.assistant .role").last).to_have_text("Lantern")
+
+        self.page.click("#settingsToggle")
+        self.page.select_option("#assistantNameMode", "model")
+        self.page.click("#settingsToggle")
+        self.send("model identity")
+        self.wait_done()
+        expect(self.page.locator(".msg.assistant .role").last).to_have_text("test-model.gguf")
+
+        self.page.click("#settingsToggle")
+        self.page.select_option("#assistantNameMode", "custom")
+        self.page.fill("#assistantCustomName", "Nova")
+        self.page.click("#settingsToggle")
+        self.send("custom identity")
+        self.wait_done()
+        expect(self.page.locator(".msg.assistant .role").last).to_have_text("Nova")
+        expect(self.page.locator(".msg.assistant .role").nth(0)).to_have_text("Lantern")
+        expect(self.page.locator(".msg.assistant .role").nth(1)).to_have_text("test-model.gguf")
+
+    def test_system_prompt_library_editor_and_conversation_selection(self):
+        self.load_model()
+        self.page.click("#settingsToggle")
+        self.page.click("#addPrompt")
+        expect(self.page.locator("#promptEditor")).to_be_visible()
+        self.assertEqual(self.page.locator("#promptEditor label").count(), 2)
+        self.assertEqual(self.page.locator("#promptEditor footer button").all_text_contents(), ["Cancel", "Save"])
+        self.assertEqual(self.page.locator("#promptEditor input, #promptEditor textarea").count(), 2)
+        self.page.fill("#promptName", "Roleplay")
+        self.page.fill("#promptContent", "Stay in character and maintain continuity.")
+        self.page.click("#promptSave")
+
+        roleplay = self.page.locator(".prompt-item").first
+        roleplay_id = roleplay.get_attribute("data-prompt-id")
+        roleplay.locator(".prompt-active-toggle").check()
+        self.assertEqual(self.page.locator(".prompt-active-toggle:checked").count(), 1)
+        self.page.click("#settingsToggle")
+        self.send("first conversation")
+        self.wait_done()
+        _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
+        self.assertEqual(request["messages"][0], {
+            "role": "system", "content": "Stay in character and maintain continuity."
+        })
+
+        self.page.click("#settingsToggle")
+        roleplay = self.page.locator(f'.prompt-item[data-prompt-id="{roleplay_id}"]')
+        roleplay.locator(".edit-prompt").click()
+        self.page.fill("#promptContent", "This edit should not apply until saved.")
+        self.page.click("#promptCancel")
+        self.page.click("#settingsToggle")
+        self.send("still original prompt")
+        self.wait_done()
+        _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
+        self.assertEqual(request["messages"][0]["content"], "Stay in character and maintain continuity.")
+
+        self.page.click("#settingsToggle")
+        roleplay = self.page.locator(f'.prompt-item[data-prompt-id="{roleplay_id}"]')
+        roleplay.locator(".edit-prompt").click()
+        self.page.fill("#promptContent", "Updated roleplay instructions.")
+        self.page.click("#promptSave")
+        self.page.click("#settingsToggle")
+        self.send("updated prompt")
+        self.wait_done()
+        _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
+        self.assertEqual(request["messages"][0]["content"], "Updated roleplay instructions.")
+
+        self.page.click("#newChat")
+        self.page.click("#settingsToggle")
+        expect(self.page.locator(f'.prompt-item[data-prompt-id="{roleplay_id}"] .prompt-active-toggle')).to_be_checked()
+        self.page.click("#addPrompt")
+        self.page.fill("#promptName", "Coding")
+        self.page.fill("#promptContent", "Prefer concise, correct code explanations.")
+        self.page.click("#promptSave")
+        coding = self.page.locator(".prompt-item").first
+        coding_id = coding.get_attribute("data-prompt-id")
+        coding.locator(".prompt-active-toggle").check()
+        self.assertEqual(self.page.locator(".prompt-active-toggle:checked").count(), 1)
+        self.page.click("#settingsToggle")
+
+        self.send("second conversation")
+        self.wait_done()
+        _, request = self.app.request("GET", "/last-request", port=self.app.llama_port)
+        self.assertEqual(request["messages"][0]["content"], "Prefer concise, correct code explanations.")
+
+        self.page.locator("#convs .conv").nth(1).click()
+        self.page.click("#settingsToggle")
+        expect(self.page.locator(f'.prompt-item[data-prompt-id="{coding_id}"] .prompt-active-toggle')).not_to_be_checked()
+        expect(self.page.locator(f'.prompt-item[data-prompt-id="{roleplay_id}"] .prompt-active-toggle')).to_be_checked()
+
+    def test_settings_screen_persists_ui_preferences_and_contains_generation(self):
+        self.load_model()
+        expect(self.page.locator("#input")).to_have_attribute("placeholder", "Message test-model.gguf")
+        self.page.click("#settingsToggle")
+        expect(self.page.locator("#settingsPanel")).to_be_visible()
+        self.assertEqual(self.page.locator("#side #generationSettings").count(), 0)
+        expect(self.page.locator("#settingsPanel #generationSettings")).to_be_visible()
+        expect(self.page.locator("#modelPlaceholder")).to_be_checked()
+        expect(self.page.locator("#showEdit")).to_be_checked()
+        expect(self.page.locator("#showContinue")).to_be_checked()
+        expect(self.page.locator("#showDelete")).to_be_checked()
+        self.page.locator("#showContinue").uncheck()
+        self.page.locator("#modelPlaceholder").uncheck()
+        expect(self.page.locator("#input")).to_have_attribute("placeholder", "Message your local model…")
+        self.page.reload()
+        expect(self.page.locator("#settingsPanel")).to_be_hidden()
+        expect(self.page.locator("#showContinue")).not_to_be_checked()
+        expect(self.page.locator("#modelPlaceholder")).not_to_be_checked()
+
+    def test_composer_scrollbar_only_appears_when_text_overflows(self):
+        input_box = self.page.locator("#input")
+        self.assertEqual(input_box.evaluate("(el) => getComputedStyle(el).overflowY"), "hidden")
+        long_text = "\\n".join(["A long line to make the composer grow."] * 40)
+        input_box.fill(long_text)
+        self.assertEqual(input_box.evaluate("(el) => getComputedStyle(el).overflowY"), "auto")
+        input_box.fill("short message")
+        self.assertEqual(input_box.evaluate("(el) => getComputedStyle(el).overflowY"), "hidden")
+        self.assertEqual(self.page.locator(".hintkey").count(), 0)
+
+    def test_message_action_preferences_hide_message_controls(self):
+        self.load_model()
+        self.send("hide these controls")
+        self.wait_done()
+        self.page.click("#settingsToggle")
+        self.page.locator("#showEdit").uncheck()
+        self.page.locator("#showContinue").uncheck()
+        self.page.locator("#showDelete").uncheck()
+        self.page.click("#settingsToggle")
+
+        expect(self.page.locator(".msg.user .edit")).to_have_count(0)
+        expect(self.page.locator(".msg.user .delete-message")).to_have_count(0)
+        expect(self.page.locator(".msg.assistant .edit-assistant")).to_have_count(0)
+        expect(self.page.locator(".msg.assistant .delete-message")).to_have_count(0)
+        expect(self.page.locator(".msg.assistant .continue")).to_have_count(0)
+
+    def test_delete_message_keeps_following_bubbles_by_default(self):
+        self.load_model()
+        self.send("first scene")
+        self.wait_done()
+        self.send("second scene")
+        self.wait_done()
+
+        expect(self.page.locator(".msg")).to_have_count(4)
+        first_user = self.page.locator(".msg.user").first
+        first_user.locator(".delete-message").click()
+        expect(self.page.locator(".msg").first.locator(".delete-question")).to_have_text(
+            "Are you sure you want to delete this message?"
+        )
+        expect(self.page.locator(".msg").first.locator(".confirm-delete")).to_have_text("Delete")
+        self.page.locator(".msg").first.locator(".confirm-delete").click()
+
+        expect(self.page.locator(".msg")).to_have_count(3)
+        expect(self.page.locator(".msg.assistant")).to_have_count(2)
+        expect(self.page.locator(".msg.user")).to_have_count(1)
+        expect(self.page.locator(".msg.assistant").first).to_contain_text("You said: first scene")
+        expect(self.page.locator(".msg.user").first.locator(".body")).to_have_text("second scene")
+
+    def test_delete_message_can_remove_following_bubbles(self):
+        self.load_model()
+        self.send("first scene")
+        self.wait_done()
+        self.send("second scene")
+        self.wait_done()
+
+        self.page.click("#settingsToggle")
+        self.page.locator("#deleteFollowing").check()
+        self.page.click("#settingsToggle")
+
+        first_assistant = self.page.locator(".msg.assistant").first
+        first_assistant.locator(".delete-message").click()
+        expect(first_assistant.locator(".delete-question")).to_have_text(
+            "Delete this message and all following messages?"
+        )
+        expect(first_assistant.locator(".confirm-delete")).to_have_text("Delete all")
+        first_assistant.locator(".confirm-delete").click()
+
+        expect(self.page.locator(".msg")).to_have_count(1)
+        expect(self.page.locator(".msg.user")).to_have_count(1)
+        expect(self.page.locator(".msg.assistant")).to_have_count(0)
+        expect(self.page.locator(".msg.user").first.locator(".body")).to_have_text("first scene")
 
     def test_page_loads_and_lists_models(self):
         options = self.page.locator("#model option").all_text_contents()
@@ -273,11 +515,13 @@ class UITests(unittest.TestCase):
 
     def test_advanced_sampling_is_sent(self):
         self.load_model()
+        self.page.click("#settingsToggle")
         self.page.locator("details.adv summary").click()
         self.page.fill("#topk", "12")
         self.page.fill("#minp", "0.1")
         self.page.fill("#repeat", "1.2")
         self.page.fill("#seed", "42")
+        self.page.click("#settingsToggle")
         self.send("sampling")
         self.wait_done()
         _, last = self.app.request("GET", "/last-request", port=self.app.llama_port)

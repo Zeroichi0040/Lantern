@@ -6,7 +6,8 @@ Understands the few flags Lantern passes (-m, --port, -c) and serves:
   GET  /last-request           -> the last chat request body (test helper)
   POST /v1/chat/completions    -> a canned streaming reply
 
-Behaviour is chosen by the model file name or by keywords in the last user message:
+Behaviour is chosen by the model file name or by keywords in the last user message
+(including Lantern’s request-only synthetic "Continue." turn):
   model name contains "crash"   -> prints an error and exits with code 3
   message contains "OVERFLOW"   -> 400 exceed_context_size_error
   each "BIGMSG" in a user message counts as 1500 prompt tokens, so a few of them
@@ -112,16 +113,24 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.flush()
 
         pieces = []
-        if req.get("chat_template_kwargs", {}).get("enable_thinking"):
-            for w in ("Let me ", "think."):
-                pieces.append(("reasoning_content", w))
-        pieces.append(("content", "You said: %s\n\n" % user_text))
-        if "TABLE" in user_text:
-            pieces.append(("content", "| Name | Size |\n|---|---|\n| tiny | 1 GB |\n| big | 9 GB |\n\n"))
-        if "LONG" in user_text:
-            pieces.extend(("content", "word%d " % i) for i in range(200))
+        continuing = bool(
+            messages
+            and messages[-1].get("role") == "user"
+            and messages[-1].get("content") == "Continue."
+        )
+        if continuing:
+            pieces.append(("content", " Continued scene."))
         else:
-            pieces.append(("content", "```python\ndef hi():\n    return 'x'  # greet\n```\n"))
+            if req.get("chat_template_kwargs", {}).get("enable_thinking"):
+                for w in ("Let me ", "think."):
+                    pieces.append(("reasoning_content", w))
+            pieces.append(("content", "You said: %s\n\n" % user_text))
+            if "TABLE" in user_text:
+                pieces.append(("content", "| Name | Size |\n|---|---|\n| tiny | 1 GB |\n| big | 9 GB |\n\n"))
+            if "LONG" in user_text:
+                pieces.extend(("content", "word%d " % i) for i in range(200))
+            else:
+                pieces.append(("content", "```python\ndef hi():\n    return 'x'  # greet\n```\n"))
 
         completion = 0
         try:

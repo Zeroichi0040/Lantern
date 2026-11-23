@@ -113,6 +113,11 @@ details.think .think-body{white-space:pre-wrap;margin-top:6px;max-height:320px;o
 .msg .meta{display:flex;gap:12px;align-items:center;font-size:12px;color:var(--muted)}
 .link{border:0;background:none;color:var(--muted);padding:0;font-size:12px}
 .link:hover{color:var(--text)}
+.link.continue{color:var(--accent);font-weight:650}
+.link.continue:hover{text-decoration:underline}
+.link.confirm-delete{color:var(--bad);font-weight:600}
+.delete-confirm{display:inline-flex;flex-direction:row;align-items:center;gap:5px;color:var(--muted);font-size:12px;white-space:nowrap}
+.delete-confirm input{margin:0}
 .err{color:var(--bad);font-size:13px;white-space:pre-wrap}
 .cursor::after{content:"▍";color:var(--accent);animation:pulse 1s infinite;margin-left:1px}
 
@@ -120,15 +125,54 @@ details.think .think-body{white-space:pre-wrap;margin-top:6px;max-height:320px;o
 #composer{padding:8px 16px 16px}
 .box{max-width:820px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
 .box:focus-within{border-color:var(--accent)}
-#input{border:0;background:none;resize:none;max-height:220px;padding:6px 4px;outline:none}
+#input{border:0;background:none;resize:none;max-height:220px;overflow-x:hidden;overflow-y:hidden;padding:6px 4px;outline:none}
 .tools{display:flex;align-items:center;gap:8px}
 .chip{border:1px solid var(--line);background:none;border-radius:999px;padding:3px 11px;font-size:12px;color:var(--muted);white-space:nowrap}
 .chip.on{color:var(--accent);border-color:var(--accent)}
 .tools .grow{flex:1}
-.tools .hintkey{font-size:11px;color:var(--muted)}
 #send{border:0;background:var(--accent);color:var(--accent-ink);border-radius:9px;padding:6px 16px;font-weight:600}
 #send.stop{background:var(--bad);color:#fff}
 #send:disabled{opacity:.4;cursor:not-allowed}
+#settingsPanel{flex:1;min-height:0;overflow-y:auto;padding:24px 16px 32px}
+.settings-wrap{max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.settings-wrap h1{font-size:22px;margin:0 0 2px}
+.settings-intro{color:var(--muted);font-size:13px;margin-top:-12px}
+.settings-card{gap:12px}
+.setting-row{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:16px;color:var(--text);font-size:13px}
+.setting-row>span{display:flex;flex-direction:column;gap:2px}
+.setting-row strong{font-size:13px;font-weight:550}
+.setting-row small{font-size:12px;color:var(--muted);font-weight:400}
+.setting-row input[type=checkbox]{width:18px;height:18px;margin:0;accent-color:var(--accent);flex:none}
+#settingsTitle{font-weight:600;flex:1}
+#app.settings-open #title,#app.settings-open #meter,#app.settings-open #export,#app.settings-open #menu{display:none!important}
+.prompt-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.prompt-heading>div{display:flex;flex-direction:column;gap:2px}
+.prompt-heading small{font-size:12px;color:var(--muted)}
+#promptList{display:flex;flex-direction:column;gap:8px}
+.prompt-empty{font-size:12px;color:var(--muted);padding:8px 2px}
+.prompt-item{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:9px;padding:10px;background:var(--panel)}
+.prompt-item.active{border-color:var(--accent)}
+.prompt-info{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.prompt-info strong{font-size:13px;font-weight:600;overflow-wrap:anywhere}
+.prompt-info small{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prompt-active{position:relative;display:inline-flex;flex-direction:row;align-items:center;gap:0;margin:0;flex:none;cursor:pointer}
+.prompt-active input{position:absolute;inset:0;z-index:2;opacity:0;width:36px;height:20px;margin:0;cursor:pointer}
+.prompt-active span{width:36px;height:20px;border-radius:99px;background:var(--line);transition:background .15s;position:relative;pointer-events:none}
+.prompt-active span:after{content:"";position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .15s}
+.prompt-active input:checked+span{background:var(--accent)}
+.prompt-active input:checked+span:after{transform:translateX(16px)}
+.prompt-active input:focus-visible+span{outline:2px solid var(--text);outline-offset:2px}
+.prompt-actions{display:flex;gap:10px;flex:none}
+.prompt-actions .link.delete-prompt{color:var(--bad)}
+.prompt-editor-backdrop{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:18px}
+.prompt-editor{width:min(640px,100%);max-height:min(860px,92vh);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:15px;box-shadow:0 18px 70px rgba(0,0,0,.4);overflow:hidden}
+.prompt-editor header{padding:20px 24px;border-bottom:1px solid var(--line)}
+.prompt-editor h2{font-size:18px;margin:0;font-weight:650}
+.prompt-editor-body{padding:20px 24px;display:flex;flex-direction:column;gap:8px;overflow:auto}
+.prompt-editor-body label{font-size:13px;color:var(--text);font-weight:600;margin-top:2px}
+.prompt-editor-body input{background:var(--panel2);padding:10px 12px}
+.prompt-editor-body textarea{background:var(--panel2);resize:vertical;min-height:240px;max-height:55vh;padding:12px;line-height:1.5}
+.prompt-editor footer{padding:14px 24px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
 
 [hidden]{display:none !important}
 
@@ -200,23 +244,6 @@ details.adv .grid2{margin-top:8px}
         <div class="hint" id="hint"></div>
       </section>
 
-      <details class="card" open>
-        <summary>Generation</summary>
-        <label>Temperature <span class="val" id="tempv"></span><input id="temp" type="range" min="0" max="2" step="0.05"></label>
-        <label>Top-p <span class="val" id="topv"></span><input id="top" type="range" min="0.05" max="1" step="0.05"></label>
-        <label>Max output tokens (0 = no limit)<input id="maxtok" type="number" min="0" step="64"></label>
-        <details class="adv">
-          <summary>Advanced sampling</summary>
-          <div class="grid2">
-            <label>Top-k (0 = off)<input id="topk" type="number" min="0" step="1"></label>
-            <label>Min-p (0 = off)<input id="minp" type="number" min="0" max="1" step="0.01"></label>
-            <label>Repeat penalty<input id="repeat" type="number" min="0.5" max="2" step="0.01"></label>
-            <label>Seed (-1 = random)<input id="seed" type="number" step="1"></label>
-          </div>
-        </details>
-        <label>System prompt<textarea id="system" rows="3" placeholder="Optional instructions for every chat"></textarea></label>
-      </details>
-
       <section>
         <div class="convs-head"><h3>Chats</h3><button class="btn" id="newChat">+ New</button></div>
         <input type="text" id="search" placeholder="Search chats…" aria-label="Search chats">
@@ -228,23 +255,91 @@ details.adv .grid2{margin-top:8px}
   <main>
     <header class="top">
       <button class="btn icon" id="menu" aria-label="Menu">☰</button>
+      <button type="button" class="btn icon" id="settingsToggle" title="Settings" aria-label="Settings">⚙</button>
       <div id="title" title="Double-click to rename">New chat</div>
+      <div id="settingsTitle" hidden>Settings</div>
       <div id="meter" hidden><div class="bar"><i></i></div><span></span></div>
       <button class="btn" id="export" title="Download this chat as Markdown">Export</button>
     </header>
     <div id="chat"><div class="wrap" id="wrap"></div></div>
+    <section id="settingsPanel" hidden>
+      <div class="settings-wrap">
+        <h1>Settings</h1>
+        <p class="settings-intro">Customize message actions, assistant identity, system prompts, and generation behavior.</p>
+        <section class="card settings-card">
+          <h3>Assistant identity</h3>
+          <label>Assistant name
+            <select id="assistantNameMode">
+              <option value="lantern">Lantern</option>
+              <option value="model">Current model name</option>
+              <option value="custom">Custom name</option>
+            </select>
+          </label>
+          <label id="customAssistantNameWrap" hidden>Custom name
+            <input type="text" id="assistantCustomName" maxlength="60" placeholder="Enter an assistant name">
+          </label>
+        </section>
+        <section class="card settings-card">
+          <h3>Message actions</h3>
+          <label class="setting-row"><span><strong>Show Edit</strong><small>Show the Edit action on user and assistant messages</small></span><input type="checkbox" id="showEdit"></label>
+          <label class="setting-row"><span><strong>Show Continue</strong><small>Show Continue on the latest completed assistant response</small></span><input type="checkbox" id="showContinue"></label>
+          <label class="setting-row"><span><strong>Show Delete</strong><small>Show the Delete action on messages</small></span><input type="checkbox" id="showDelete"></label>
+          <label class="setting-row"><span><strong>Delete following messages</strong><small>Confirming deletion removes the selected message and every message after it</small></span><input type="checkbox" id="deleteFollowing"></label>
+        </section>
+        <section class="card settings-card">
+          <h3>Message composer</h3>
+          <label class="setting-row"><span><strong>Use model name in placeholder</strong><small>Show “Message [model name]” while a model is ready</small></span><input type="checkbox" id="modelPlaceholder"></label>
+        </section>
+        <section class="card settings-card" id="systemPromptSettings">
+          <div class="prompt-heading">
+            <div><h3>System prompts</h3><small id="activePromptSummary">No active prompt</small></div>
+            <button type="button" class="btn" id="addPrompt">+ Add prompt</button>
+          </div>
+          <div id="promptList"></div>
+        </section>
+        <details class="card settings-card" id="generationSettings" open>
+          <summary>Generation</summary>
+          <label>Temperature <span class="val" id="tempv"></span><input id="temp" type="range" min="0" max="2" step="0.05"></label>
+          <label>Top-p <span class="val" id="topv"></span><input id="top" type="range" min="0.05" max="1" step="0.05"></label>
+          <label>Max output tokens (0 = no limit)<input id="maxtok" type="number" min="0" step="64"></label>
+          <details class="adv">
+            <summary>Advanced sampling</summary>
+            <div class="grid2">
+              <label>Top-k (0 = off)<input id="topk" type="number" min="0" step="1"></label>
+              <label>Min-p (0 = off)<input id="minp" type="number" min="0" max="1" step="0.01"></label>
+              <label>Repeat penalty<input id="repeat" type="number" min="0.5" max="2" step="0.01"></label>
+              <label>Seed (-1 = random)<input id="seed" type="number" step="1"></label>
+            </div>
+          </details>
+        </details>
+      </div>
+    </section>
     <form id="composer" autocomplete="off">
       <div class="box">
         <textarea id="input" rows="1" placeholder="Message your local model…"></textarea>
         <div class="tools">
           <button type="button" class="chip" id="think" title="Ask the model to reason before answering (template-dependent)">Thinking</button>
           <span class="grow"></span>
-          <span class="hintkey">Enter to send · Shift+Enter for newline</span>
           <button id="send" type="submit">Send</button>
         </div>
       </div>
     </form>
   </main>
+</div>
+<div id="promptEditor" class="prompt-editor-backdrop" hidden>
+  <section class="prompt-editor" role="dialog" aria-modal="true" aria-labelledby="promptEditorTitle">
+    <header><h2 id="promptEditorTitle">Edit Prompt</h2></header>
+    <div class="prompt-editor-body">
+      <label for="promptName">Name</label>
+      <input type="text" id="promptName" maxlength="80" placeholder="Prompt name">
+      <label for="promptContent">Content</label>
+      <textarea id="promptContent" rows="12" placeholder="Write the system prompt here…"></textarea>
+    </div>
+    <footer>
+      <button type="button" class="btn" id="promptCancel">Cancel</button>
+      <button type="button" class="btn primary" id="promptSave">Save</button>
+    </footer>
+  </section>
 </div>
 <div id="toast" role="status"></div>
 
@@ -268,18 +363,148 @@ const MODEL_KEYS = ["mode", "ctx", "threads", "thinking", "temp", "top", "topk",
 const defaults = {model:"", mode:"cpu", ctx:4096, threads:4, temp:0.7, top:0.95, topk:40, minp:0.05, repeat:1, seed:-1, maxtok:0, system:"", thinking:true, perModel:{}};
 let S = {...defaults, ...store.get("lantern.settings", {})};
 if (!S.perModel || typeof S.perModel !== "object") S.perModel = {};
+const uiDefaults = {
+  showEdit:true, showContinue:true, showDelete:true, deleteFollowing:false, modelPlaceholder:true,
+  assistantNameMode:"lantern", assistantCustomName:"", defaultPromptId:null
+};
+let UI = {...uiDefaults, ...store.get("lantern.ui-settings", {})};
+for (const [key, value] of Object.entries(uiDefaults)){
+  if (typeof UI[key] !== typeof value) UI[key] = value;
+}
+const saveUI = () => store.set("lantern.ui-settings", UI);
 let convs = store.get("lantern.convs", []);
 let activeId = store.get("lantern.active", null);
 let status = {state:"offline"};
 let generating = false, controller = null, threadsTouched = !!store.get("lantern.settings", null);
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+let prompts = store.get("lantern.prompts", []);
+if (!Array.isArray(prompts)) prompts = [];
+prompts = prompts.filter(p => p && typeof p.id === "string" && typeof p.name === "string" && typeof p.content === "string");
+let promptDataChanged = false;
+if (!prompts.length && typeof S.system === "string" && S.system.trim()){
+  const legacyPrompt = {id:"legacy-default", name:"Default", content:S.system};
+  prompts.push(legacyPrompt);
+  convs.forEach(c => { if (!c.systemPromptId) c.systemPromptId = legacyPrompt.id; });
+  UI.defaultPromptId = legacyPrompt.id;
+  S.system = "";
+  store.set("lantern.settings", S);
+  promptDataChanged = true;
+}
+const promptExists = id => !!id && prompts.some(p => p.id === id);
+if (!promptExists(UI.defaultPromptId)) UI.defaultPromptId = null;
+if (!["lantern", "model", "custom"].includes(UI.assistantNameMode)) UI.assistantNameMode = "lantern";
+convs.forEach(c => {
+  if (c.systemPromptId && !promptExists(c.systemPromptId)){ c.systemPromptId = null; promptDataChanged = true; }
+});
+if (promptDataChanged) store.set("lantern.convs", convs);
+store.set("lantern.prompts", prompts);
+saveUI();
+
+const savePrompts = () => store.set("lantern.prompts", prompts);
+const promptById = id => prompts.find(p => p.id === id) || null;
 const saveS = () => {
   if (S.model) S.perModel[S.model] = Object.fromEntries(MODEL_KEYS.map(k => [k, S[k]]));
   store.set("lantern.settings", S);
 };
 const saveC = () => { store.set("lantern.convs", convs.slice(0, 100)); store.set("lantern.active", activeId); };
 const active = () => convs.find(c => c.id === activeId);
+
+function renderPromptLibrary(){
+  const list = $("#promptList");
+  if (!list) return;
+  list.innerHTML = "";
+  const c = active();
+  const selectedId = c ? (c.systemPromptId || null) : UI.defaultPromptId;
+  const selected = promptById(selectedId);
+  $("#activePromptSummary").textContent = selected ? `Active for this chat: ${selected.name}` : "No active prompt";
+  if (!prompts.length){
+    const empty = document.createElement("div");
+    empty.className = "prompt-empty";
+    empty.textContent = "No saved prompts yet. Add one to reuse system instructions across conversations.";
+    list.appendChild(empty);
+    return;
+  }
+  prompts.forEach(prompt => {
+    const row = document.createElement("div");
+    row.className = "prompt-item" + (prompt.id === selectedId ? " active" : "");
+    row.dataset.promptId = prompt.id;
+    const info = document.createElement("div");
+    info.className = "prompt-info";
+    const name = document.createElement("strong");
+    name.textContent = prompt.name;
+    const preview = document.createElement("small");
+    const clean = prompt.content.trim().replace(/\s+/g, " ");
+    preview.textContent = clean.slice(0, 120) || "Empty prompt";
+    info.append(name, preview);
+    const toggleLabel = document.createElement("label");
+    toggleLabel.className = "prompt-active";
+    toggleLabel.title = "Use this prompt for the current conversation";
+    const toggle = document.createElement("input");
+    toggle.type = "checkbox";
+    toggle.className = "prompt-active-toggle";
+    toggle.checked = prompt.id === selectedId;
+    toggle.setAttribute("aria-label", `Activate ${prompt.name}`);
+    const track = document.createElement("span");
+    toggleLabel.append(toggle, track);
+    const actions = document.createElement("div");
+    actions.className = "prompt-actions";
+    const edit = document.createElement("button");
+    edit.type = "button"; edit.className = "link edit-prompt"; edit.textContent = "Edit";
+    const del = document.createElement("button");
+    del.type = "button"; del.className = "link delete-prompt"; del.textContent = "Delete";
+    actions.append(edit, del);
+    row.append(info, toggleLabel, actions);
+    list.appendChild(row);
+  });
+}
+function setActivePrompt(id, enabled){
+  const c = active();
+  const nextId = enabled && promptExists(id) ? id : null;
+  if (c){ c.systemPromptId = nextId; saveC(); }
+  UI.defaultPromptId = nextId;
+  saveUI();
+  renderPromptLibrary();
+}
+let editingPromptId = null;
+function openPromptEditor(id = null){
+  const prompt = id ? promptById(id) : null;
+  if (id && !prompt) return;
+  editingPromptId = id;
+  $("#promptName").value = prompt ? prompt.name : "";
+  $("#promptContent").value = prompt ? prompt.content : "";
+  $("#promptEditor").hidden = false;
+  $("#promptName").focus();
+}
+function closePromptEditor(){
+  $("#promptEditor").hidden = true;
+  editingPromptId = null;
+}
+function savePromptEditor(){
+  const name = $("#promptName").value.trim();
+  if (!name) return toast("Give this prompt a name first.");
+  const content = $("#promptContent").value;
+  if (editingPromptId){
+    const prompt = promptById(editingPromptId);
+    if (!prompt) return closePromptEditor();
+    prompt.name = name;
+    prompt.content = content;
+  } else {
+    prompts.unshift({id:uid(), name, content});
+  }
+  savePrompts();
+  closePromptEditor();
+  renderPromptLibrary();
+}
+function deletePrompt(id){
+  const prompt = promptById(id);
+  if (!prompt) return;
+  if (!window.confirm(`Delete the system prompt “${prompt.name}”?`)) return;
+  prompts = prompts.filter(p => p.id !== id);
+  convs.forEach(c => { if (c.systemPromptId === id) c.systemPromptId = null; });
+  if (UI.defaultPromptId === id) UI.defaultPromptId = null;
+  savePrompts(); saveC(); saveUI(); renderPromptLibrary();
+}
 
 let toastTimer;
 function toast(msg){
@@ -405,16 +630,23 @@ function msgEl(m, i, isLast){
   el.dataset.idx = i;
   if (m.role === "user"){
     el.innerHTML = '<div class="role">You</div><div class="body"></div>' +
-      '<div class="meta"><button type="button" class="link edit">Edit</button></div>';
+      '<div class="meta">' +
+      (UI.showEdit ? '<button type="button" class="link edit">Edit</button>' : "") +
+      (UI.showDelete ? '<button type="button" class="link delete-message">Delete</button>' : "") + '</div>';
     el.querySelector(".body").textContent = m.content;
+    if (!el.querySelector(".meta").children.length) el.querySelector(".meta").hidden = true;
     return el;
   }
-  el.innerHTML = '<div class="role">Lantern</div>' +
+  el.innerHTML = '<div class="role"></div>' +
     '<details class="think" hidden><summary>Thought process</summary><div class="think-body"></div></details>' +
     '<div class="body"></div><div class="err" hidden></div>' +
     '<div class="errbar" hidden><button type="button" class="link trim">Trim oldest messages &amp; retry</button></div>' +
     '<div class="meta"><span class="stats"></span><button type="button" class="link copy">Copy</button>' +
-    (isLast ? '<button type="button" class="link regen">Regenerate</button>' : "") + "</div>";
+    (UI.showDelete ? '<button type="button" class="link delete-message">Delete</button>' : "") +
+    (UI.showEdit && m.content && !m.error ? '<button type="button" class="link edit-assistant">Edit</button>' : "") +
+    (isLast ? '<button type="button" class="link regen">Regenerate</button>' : "") +
+    (UI.showContinue && isLast && m.content && !m.error ? '<button type="button" class="link continue">Continue</button>' : "") + "</div>";
+  el.querySelector(".role").textContent = m.displayName || "Lantern";
   updateEl(el, m, false);
   return el;
 }
@@ -452,6 +684,7 @@ function schedule(el, m){
 function renderChat(){
   const c = active();
   wrap.innerHTML = "";
+  renderPromptLibrary();
   $("#title").textContent = c ? c.title : "New chat";
   if (!c || !c.messages.length){
     wrap.innerHTML = '<div id="empty"><h1>Lantern</h1><p>Chat with a model running entirely on your machine. Pick a GGUF model on the left, load it, and say hello.</p></div>';
@@ -536,7 +769,10 @@ function renameConv(id, anchor){
 }
 
 function newConv(){
-  const c = {id: uid(), title: "New chat", messages: [], updated: Date.now()};
+  const previous = active();
+  const inheritedPrompt = previous ? previous.systemPromptId : UI.defaultPromptId;
+  const c = {id: uid(), title: "New chat", messages: [], updated: Date.now(),
+    systemPromptId: promptExists(inheritedPrompt) ? inheritedPrompt : null};
   convs.unshift(c); activeId = c.id; saveC(); renderConvs(); renderChat();
   return c;
 }
@@ -631,13 +867,29 @@ function updateSend(){
   b.classList.toggle("stop", generating);
   b.textContent = generating ? "Stop" : "Send";
   b.disabled = !generating && !input.value.trim();
-  input.placeholder = status.state === "ready" ? "Message your local model…" : "Load a model to start chatting…";
+  input.placeholder = status.state === "ready"
+    ? (UI.modelPlaceholder && S.model ? `Message ${S.model}` : "Message your local model…")
+    : "Load a model to start chatting…";
 }
 
-function chatBody(c){
+function chatBody(c, continuePrompt = false){
   // c.skip = how many oldest messages were trimmed away to fit the context window.
-  const hist = c.messages.slice(c.skip || 0, -1).map(x => ({role: x.role, content: x.content}));
-  const msgs = (S.system.trim() ? [{role: "system", content: S.system.trim()}] : []).concat(hist);
+  // Adjacent assistant bubbles are one continuous passage for the model, even though
+  // they remain separate bubbles in the UI.
+  const hist = c.messages.slice(c.skip || 0, -1).reduce((messages, x) => {
+    const item = {role: x.role, content: x.content || ""};
+    const previous = messages[messages.length - 1];
+    if (item.role === "assistant" && previous && previous.role === "assistant") previous.content += item.content;
+    else messages.push(item);
+    return messages;
+  }, []);
+  const prompt = promptById(c.systemPromptId);
+  const systemContent = prompt ? prompt.content.trim() : "";
+  const msgs = (systemContent ? [{role: "system", content: systemContent}] : []).concat(hist);
+  if (continuePrompt){
+    // This synthetic turn exists only in the API request, never in c.messages.
+    msgs.push({role: "user", content: "Continue."});
+  }
   const body = {
     messages: msgs, stream: true, temperature: S.temp, top_p: S.top,
     top_k: S.topk, min_p: S.minp, repeat_penalty: S.repeat, seed: S.seed,
@@ -660,8 +912,18 @@ function apiError(j, fallback){
   return e;
 }
 
-async function generate(c){
-  const m = {role: "assistant", content: "", reasoning: ""};
+function resolveAssistantDisplayName(){
+  if (UI.assistantNameMode === "model") return status.model || S.model || "Assistant";
+  if (UI.assistantNameMode === "custom") return UI.assistantCustomName.trim() || "Assistant";
+  return "Lantern";
+}
+async function generate(c, options = {}){
+  const m = {
+    role: "assistant", content: "", reasoning: "",
+    displayName: resolveAssistantDisplayName(),
+    modelName: status.model || S.model || ""
+  };
+  if (options.continuePrompt) m.continuation = true;
   c.messages.push(m);
   if (c.title === "New chat"){ const u = c.messages.find(x => x.role === "user"); if (u) c.title = u.content.trim().replace(/\s+/g, " ").slice(0, 48) || "New chat"; }
   c.updated = Date.now();
@@ -671,7 +933,7 @@ async function generate(c){
   const t0 = performance.now(); let chunks = 0, timings = null, usage = null;
 
   try {
-    const r = await fetch("/v1/chat/completions", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(chatBody(c)), signal: controller.signal});
+    const r = await fetch("/v1/chat/completions", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(chatBody(c, !!m.continuation)), signal: controller.signal});
     if (!r.ok) throw apiError(await r.json().catch(() => ({})), r.statusText);
     const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
     for (;;){
@@ -730,7 +992,13 @@ $("#composer").addEventListener("submit", e => {
 input.addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing){ e.preventDefault(); if (!generating) send(); }
 });
-function autosize(){ input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 220) + "px"; updateSend(); }
+function autosize(){
+  input.style.height = "auto";
+  const needsScroll = input.scrollHeight > 220;
+  input.style.height = Math.min(input.scrollHeight, 220) + "px";
+  input.style.overflowY = needsScroll ? "auto" : "hidden";
+  updateSend();
+}
 input.addEventListener("input", autosize);
 
 function startEdit(idx){
@@ -746,6 +1014,81 @@ function startEdit(idx){
   ta.focus();
 }
 
+// Assistant edits update the canonical history entry in place. Later turns remain,
+// but every future request will use the revised response.
+function startAssistantEdit(idx){
+  if (generating) return toast("Stop the current reply first.");
+  const c = active(), m = c && c.messages[idx];
+  const el = wrap.querySelector(`.msg[data-idx="${idx}"]`);
+  if (!m || m.role !== "assistant" || !m.content || m.error || !el || el.querySelector("textarea")) return;
+  const ta = document.createElement("textarea");
+  ta.className = "editbox"; ta.value = m.content;
+  ta.rows = Math.min(14, Math.max(3, m.content.split("\n").length));
+  el.querySelector(".body").replaceWith(ta);
+  el.querySelector(".meta").innerHTML =
+    '<button type="button" class="link save-assistant">Save</button>' +
+    '<button type="button" class="link cancel-assistant">Cancel</button>';
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+
+function saveAssistantEdit(idx, ta){
+  if (generating) return toast("Stop the current reply first.");
+  const c = active(), m = c && c.messages[idx];
+  if (!m || m.role !== "assistant" || !ta) return;
+  if (!ta.value.trim()) return toast("An assistant response cannot be empty.");
+
+  m.content = ta.value;
+  // Usage and timing data describe the original generated text.
+  delete m.stats;
+  delete m.usage;
+  delete m.error;
+  delete m.ctxError;
+  delete m.stopped;
+  c.updated = Date.now();
+  saveC(); renderConvs(); renderChat(); renderMeter();
+}
+
+function startMessageDelete(idx){
+  if (generating) return toast("Stop the current reply first.");
+  const c = active(), m = c && c.messages[idx];
+  const el = wrap.querySelector(`.msg[data-idx="${idx}"]`);
+  if (!m || !el || el.querySelector("textarea")) return;
+  const cascade = UI.deleteFollowing;
+  el.querySelector(".meta").innerHTML =
+    `<span class="delete-question">${cascade ? "Delete this message and all following messages?" : "Are you sure you want to delete this message?"}</span>` +
+    `<button type="button" class="link confirm-delete" data-delete-following="${cascade}">${cascade ? "Delete all" : "Delete"}</button>` +
+    '<button type="button" class="link cancel-delete">Cancel</button>';
+}
+
+function deleteMessage(idx, deleteFollowing){
+  if (generating) return toast("Stop the current reply first.");
+  const c = active();
+  if (!c || !c.messages[idx]) return;
+  const skipped = c.skip || 0;
+  if (deleteFollowing){
+    c.messages.splice(idx);
+    c.skip = Math.min(skipped, idx);
+  } else {
+    c.messages.splice(idx, 1);
+    if (idx < skipped) c.skip = skipped - 1;
+  }
+  if (!c.skip) delete c.skip;
+  c.updated = Date.now();
+  saveC(); renderConvs(); renderChat(); renderMeter();
+}
+
+async function continueStory(){
+  if (generating) return;
+  const c = active();
+  const last = c && c.messages[c.messages.length - 1];
+  if (!last || last.role !== "assistant" || !last.content || last.error) return;
+  if (status.state !== "ready") return toast("Load a model first.");
+
+  // Generate a separate bubble after injecting a hidden, request-only user turn.
+  await generate(c, {continuePrompt: true});
+}
+
 chat.addEventListener("click", async e => {
   const t = e.target, msg = t.closest(".msg"), idx = msg ? +msg.dataset.idx : -1;
   if (t.classList.contains("codecopy")){
@@ -756,9 +1099,24 @@ chat.addEventListener("click", async e => {
   } else if (t.classList.contains("regen")){
     const c = active(); if (!c || generating) return;
     if (status.state !== "ready") return toast("Load a model first.");
-    c.messages.pop(); await generate(c);
+    const continuePrompt = !!c.messages[c.messages.length - 1].continuation;
+    c.messages.pop(); await generate(c, {continuePrompt});
+  } else if (t.classList.contains("delete-message")){
+    startMessageDelete(idx);
+  } else if (t.classList.contains("confirm-delete")){
+    deleteMessage(idx, t.dataset.deleteFollowing === "true");
+  } else if (t.classList.contains("cancel-delete")){
+    renderChat();
   } else if (t.classList.contains("edit")){
     startEdit(idx);
+  } else if (t.classList.contains("edit-assistant")){
+    startAssistantEdit(idx);
+  } else if (t.classList.contains("save-assistant")){
+    saveAssistantEdit(idx, msg && msg.querySelector("textarea"));
+  } else if (t.classList.contains("cancel-assistant")){
+    renderChat();
+  } else if (t.classList.contains("continue")){
+    await continueStory();
   } else if (t.classList.contains("cancel")){
     renderChat();
   } else if (t.classList.contains("resend")){
@@ -774,12 +1132,18 @@ chat.addEventListener("click", async e => {
   } else if (t.classList.contains("trim")){
     const c = active(); if (!c || generating) return;
     if (status.state !== "ready") return toast("Load a model first.");
-    // The list ends with the failed reply; the user message just before it must stay.
-    const lastUser = c.messages.length - 2, cur = c.skip || 0;
-    const next = Math.min(cur + 2, lastUser);
+    // Keep the latest user turn for a normal reply, or the latest assistant passage
+    // for a continuation retry. Older messages can be trimmed in either case.
+    const failed = c.messages[c.messages.length - 1];
+    const retryContinuation = !!(failed && failed.continuation);
+    const protectedIndex = retryContinuation
+      ? c.messages.length - 2
+      : c.messages.reduce((last, m, i) => m.role === "user" ? i : last, -1);
+    const cur = c.skip || 0;
+    const next = Math.min(cur + 2, protectedIndex);
     if (next <= cur) return toast("Nothing left to trim: this one message is too long. Raise Context and reload the model.");
     c.skip = next; c.messages.pop();
-    await generate(c);
+    await generate(c, {continuePrompt: retryContinuation});
   }
 });
 async function copy(text){
@@ -787,6 +1151,20 @@ async function copy(text){
   catch { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
 }
 
+function setSettingsOpen(open){
+  $("#settingsPanel").hidden = !open;
+  $("#chat").hidden = open;
+  $("#composer").hidden = open;
+  $("#settingsTitle").hidden = !open;
+  $("#app").classList.toggle("settings-open", open);
+  $("#app").classList.remove("open");
+  const button = $("#settingsToggle");
+  button.textContent = open ? "←" : "⚙";
+  button.setAttribute("aria-label", open ? "Back to chat" : "Settings");
+  button.title = open ? "Back to chat" : "Settings";
+  if (!open) input.focus();
+}
+$("#settingsToggle").onclick = () => setSettingsOpen($("#settingsPanel").hidden);
 $("#newChat").onclick = () => { if (generating) return toast("Stop the current reply first."); newConv(); $("#app").classList.remove("open"); input.focus(); };
 $("#menu").onclick = () => $("#app").classList.toggle("open");
 $("#closeSide").onclick = () => $("#app").classList.remove("open");
@@ -815,11 +1193,47 @@ function syncControls(){
                            ["minp", "minp"], ["repeat", "repeat"], ["seed", "seed"], ["temp", "temp"], ["top", "top"]]) $("#" + id).value = S[key];
   $("#tempv").textContent = (+S.temp).toFixed(2);
   $("#topv").textContent = (+S.top).toFixed(2);
-  $("#system").value = S.system;
+  $("#assistantNameMode").value = UI.assistantNameMode;
+  $("#assistantCustomName").value = UI.assistantCustomName;
+  $("#customAssistantNameWrap").hidden = UI.assistantNameMode !== "custom";
   markMode(); markThink();
 }
 
 function bindSettings(){
+  $("#addPrompt").onclick = () => openPromptEditor();
+  $("#promptCancel").onclick = closePromptEditor;
+  $("#promptSave").onclick = savePromptEditor;
+  $("#promptEditor").addEventListener("click", e => {
+    if (e.target === $("#promptEditor")) closePromptEditor();
+  });
+  $("#promptList").addEventListener("change", e => {
+    if (!e.target.classList.contains("prompt-active-toggle")) return;
+    const row = e.target.closest(".prompt-item");
+    if (row) setActivePrompt(row.dataset.promptId, e.target.checked);
+  });
+  $("#promptList").addEventListener("click", e => {
+    const row = e.target.closest(".prompt-item");
+    if (!row) return;
+    if (e.target.classList.contains("edit-prompt")) openPromptEditor(row.dataset.promptId);
+    else if (e.target.classList.contains("delete-prompt")) deletePrompt(row.dataset.promptId);
+  });
+  const uiToggles = {
+    showEdit:"showEdit",
+    showContinue:"showContinue",
+    showDelete:"showDelete",
+    deleteFollowing:"deleteFollowing",
+    modelPlaceholder:"modelPlaceholder"
+  };
+  for (const [id, key] of Object.entries(uiToggles)){
+    const control = $("#" + id);
+    control.checked = UI[key];
+    control.addEventListener("change", () => {
+      UI[key] = control.checked;
+      saveUI();
+      if (key === "showEdit" || key === "showContinue" || key === "showDelete") renderChat();
+      if (key === "modelPlaceholder") updateSend();
+    });
+  }
   const num = (id, key, parse) => $("#" + id).addEventListener("input", e => {
     const v = parse(e.target.value);
     if (!Number.isNaN(v)){ S[key] = v; saveS(); }
@@ -834,7 +1248,15 @@ function bindSettings(){
   num("seed", "seed", v => { const n = parseInt(v, 10); return Number.isNaN(n) ? -1 : n; });
   $("#temp").oninput = e => { S.temp = +e.target.value; $("#tempv").textContent = S.temp.toFixed(2); saveS(); };
   $("#top").oninput = e => { S.top = +e.target.value; $("#topv").textContent = S.top.toFixed(2); saveS(); };
-  $("#system").oninput = e => { S.system = e.target.value; saveS(); };
+  $("#assistantNameMode").onchange = e => {
+    UI.assistantNameMode = e.target.value;
+    $("#customAssistantNameWrap").hidden = UI.assistantNameMode !== "custom";
+    saveUI();
+  };
+  $("#assistantCustomName").oninput = e => {
+    UI.assistantCustomName = e.target.value;
+    saveUI();
+  };
   $("#model").onchange = e => applyModel(e.target.value);
   document.querySelectorAll("#mode button").forEach(b => { b.onclick = () => { S.mode = b.dataset.v; saveS(); markMode(); }; });
   $("#think").onclick = () => { S.thinking = !S.thinking; saveS(); markThink(); };
@@ -842,7 +1264,10 @@ function bindSettings(){
 
   $("#search").oninput = e => { query = e.target.value; renderConvs(); };
   $("#title").ondblclick = e => { const c = active(); if (c && e.target.id === "title") renameConv(c.id, e.target); };
-  document.addEventListener("keydown", e => { if (e.key === "Escape" && generating && controller) controller.abort(); });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !$("#promptEditor").hidden){ closePromptEditor(); return; }
+    if (e.key === "Escape" && generating && controller) controller.abort();
+  });
 }
 
 /* ---------- boot ---------- */
