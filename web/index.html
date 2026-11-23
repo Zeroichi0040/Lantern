@@ -661,7 +661,7 @@ function chatBody(c, continueFinalMessage = false){
     chat_template_kwargs: {enable_thinking: S.thinking},
     reasoning_format: "deepseek", stream_options: {include_usage: true}
   };
-  if (continueFinalMessage) body.continue_final_message = "content";
+  if (continueFinalMessage) body.continue_final_message = true;
   if (S.maxtok > 0) body.max_tokens = S.maxtok;
   return body;
 }
