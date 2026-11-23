@@ -116,7 +116,7 @@ details.think .think-body{white-space:pre-wrap;margin-top:6px;max-height:320px;o
 .link.continue{color:var(--accent);font-weight:650}
 .link.continue:hover{text-decoration:underline}
 .link.confirm-delete{color:var(--bad);font-weight:600}
-.delete-confirm{display:inline-flex;align-items:center;gap:5px;color:var(--muted);font-size:12px}
+.delete-confirm{display:inline-flex;flex-direction:row;align-items:center;gap:5px;color:var(--muted);font-size:12px;white-space:nowrap}
 .delete-confirm input{margin:0}
 .err{color:var(--bad);font-size:13px;white-space:pre-wrap}
 .cursor::after{content:"▍";color:var(--accent);animation:pulse 1s infinite;margin-left:1px}
@@ -661,7 +661,11 @@ function chatBody(c, continueFinalMessage = false){
     chat_template_kwargs: {enable_thinking: S.thinking},
     reasoning_format: "deepseek", stream_options: {include_usage: true}
   };
-  if (continueFinalMessage) body.continue_final_message = true;
+  if (continueFinalMessage){
+    // llama-server defaults add_generation_prompt to true unless explicitly disabled.
+    body.add_generation_prompt = false;
+    body.continue_final_message = true;
+  }
   if (S.maxtok > 0) body.max_tokens = S.maxtok;
   return body;
 }
