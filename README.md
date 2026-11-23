@@ -29,13 +29,20 @@ Nothing leaves your machine, and there is nothing to `pip install` or `npm insta
 
 ## Setup
 
-Lantern keeps everything in one folder (default `~/lantern-lab`, created on first run):
+Lantern can use a shared workspace. When you clone it as a folder beside
+`models/` and `llama.cpp/`, it automatically uses that parent folder:
 
 ```
-lantern-lab/
+llm-lab/
+├── lantern/      # this repository
 ├── models/       # put .gguf files here
-└── llama.cpp/    # extract llama-server (+ its DLLs/libs) here
+├── llama.cpp/    # llama-server (+ its DLLs/libs)
+└── studio/       # optional, unrelated projects
 ```
+
+That layout is detected automatically. Otherwise Lantern uses
+`~/lantern-lab` (created on first run). Set `LANTERN_HOME` to choose
+another workspace explicitly.
 
 If `llama-server` is already on your `PATH`, you can skip the `llama.cpp/` folder.
 
