@@ -127,4 +127,6 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
 
-ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+print("fake llama-server listening on 127.0.0.1:%d" % PORT, flush=True)
+server.serve_forever()
