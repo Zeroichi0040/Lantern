@@ -18,6 +18,7 @@ import json
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import socketserver
 
 print("fake llama-server entrypoint reached", flush=True)
 args = sys.argv[1:]
@@ -47,6 +48,18 @@ def count_tokens(messages):
         if m.get("role") == "user":
             total += 1500 * text.count("BIGMSG")
     return total
+
+
+class LocalThreadingHTTPServer(ThreadingHTTPServer):
+    """Avoid HTTPServer's reverse-DNS lookup during startup.
+
+    The test server only binds to loopback. Resolving that address to an FQDN
+    is unnecessary and can stall on isolated macOS CI runners.
+    """
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = self.server_address[0]
+        self.server_port = self.server_address[1]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -129,6 +142,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 print("fake llama-server binding 127.0.0.1:%d" % PORT, flush=True)
-server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+server = LocalThreadingHTTPServer(("127.0.0.1", PORT), Handler)
 print("fake llama-server listening on 127.0.0.1:%d" % PORT, flush=True)
 server.serve_forever()
