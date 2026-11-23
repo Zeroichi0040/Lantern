@@ -167,6 +167,39 @@ class UITests(unittest.TestCase):
         # Synthetic prompts are sent to the model but never become visible chat turns.
         expect(self.page.locator(".msg.user")).to_have_count(1)
 
+    def test_settings_screen_persists_ui_preferences_and_contains_generation(self):
+        self.load_model()
+        self.page.click("#settingsToggle")
+        expect(self.page.locator("#settingsPanel")).to_be_visible()
+        self.assertEqual(self.page.locator("#side #generationSettings").count(), 0)
+        expect(self.page.locator("#settingsPanel #generationSettings")).to_be_visible()
+        expect(self.page.locator("#modelPlaceholder")).to_be_checked()
+        expect(self.page.locator("#showEdit")).to_be_checked()
+        expect(self.page.locator("#showContinue")).to_be_checked()
+        expect(self.page.locator("#showDelete")).to_be_checked()
+        self.page.locator("#showContinue").uncheck()
+        self.page.locator("#modelPlaceholder").uncheck()
+        self.page.reload()
+        expect(self.page.locator("#settingsPanel")).to_be_hidden()
+        expect(self.page.locator("#showContinue")).not_to_be_checked()
+        expect(self.page.locator("#modelPlaceholder")).not_to_be_checked()
+
+    def test_message_action_preferences_hide_message_controls(self):
+        self.load_model()
+        self.send("hide these controls")
+        self.wait_done()
+        self.page.click("#settingsToggle")
+        self.page.locator("#showEdit").uncheck()
+        self.page.locator("#showContinue").uncheck()
+        self.page.locator("#showDelete").uncheck()
+        self.page.click("#settingsToggle")
+
+        expect(self.page.locator(".msg.user .edit")).to_have_count(0)
+        expect(self.page.locator(".msg.user .delete-message")).to_have_count(0)
+        expect(self.page.locator(".msg.assistant .edit-assistant")).to_have_count(0)
+        expect(self.page.locator(".msg.assistant .delete-message")).to_have_count(0)
+        expect(self.page.locator(".msg.assistant .continue")).to_have_count(0)
+
     def test_delete_message_keeps_following_bubbles_by_default(self):
         self.load_model()
         self.send("first scene")
@@ -177,12 +210,10 @@ class UITests(unittest.TestCase):
         expect(self.page.locator(".msg")).to_have_count(4)
         first_user = self.page.locator(".msg.user").first
         first_user.locator(".delete-message").click()
-        checkbox = self.page.locator(".msg").first.locator(".delete-following")
-        expect(checkbox).not_to_be_checked()
-        self.assertEqual(
-            checkbox.locator("xpath=..").evaluate("(el) => getComputedStyle(el).flexDirection"),
-            "row"
+        expect(self.page.locator(".msg").first.locator(".delete-question")).to_have_text(
+            "Are you sure you want to delete this message?"
         )
+        expect(self.page.locator(".msg").first.locator(".confirm-delete")).to_have_text("Delete")
         self.page.locator(".msg").first.locator(".confirm-delete").click()
 
         expect(self.page.locator(".msg")).to_have_count(3)
@@ -198,10 +229,16 @@ class UITests(unittest.TestCase):
         self.send("second scene")
         self.wait_done()
 
+        self.page.click("#settingsToggle")
+        self.page.locator("#deleteFollowing").check()
+        self.page.click("#settingsToggle")
+
         first_assistant = self.page.locator(".msg.assistant").first
         first_assistant.locator(".delete-message").click()
-        checkbox = first_assistant.locator(".delete-following")
-        checkbox.check()
+        expect(first_assistant.locator(".delete-question")).to_have_text(
+            "Delete this message and all following messages?"
+        )
+        expect(first_assistant.locator(".confirm-delete")).to_have_text("Delete all")
         first_assistant.locator(".confirm-delete").click()
 
         expect(self.page.locator(".msg")).to_have_count(1)
