@@ -72,6 +72,7 @@ Then open <http://127.0.0.1:8080> (`--open` does it for you).
 | `LANTERN_HOME` | `~/lantern-lab` | Base folder |
 | `LANTERN_MODELS` | `$LANTERN_HOME/models` | Models folder |
 | `LANTERN_LLAMA_SERVER` | auto-detected | Explicit path to `llama-server` |
+| `LANTERN_LOG_FILE` | `$LANTERN_HOME/lantern-server.log` | Lantern's server log file |
 | `LANTERN_PORT` | `8080` | UI port |
 | `LANTERN_LLAMA_PORT` | UI port + 1 | llama-server port |
 
@@ -80,7 +81,7 @@ Then open <http://127.0.0.1:8080> (`--open` does it for you).
 - Both services bind to `127.0.0.1` only.
 - Requests are rejected unless the `Host` and `Origin` headers point at Lantern itself,
   which blocks other websites (and DNS-rebinding tricks) from driving your local model.
-- Chats live in your browser's local storage. The model server log is `$LANTERN_HOME/llama-server.log`.
+- Chats live in your browser's local storage. Lantern writes its model server log to `$LANTERN_HOME/lantern-server.log` by default, so it does not overwrite an existing `llama-server.log`.
 
 ## Development and tests
 
