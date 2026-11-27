@@ -2,7 +2,7 @@
 
 A small, local-first web UI for chatting with GGUF models through
 [llama.cpp](https://github.com/ggml-org/llama.cpp)'s `llama-server`.
-Nothing leaves your machine, and there is nothing to `pip install` or `npm install`.
+Local by default, with an optional experimental private Tailscale connection. There is nothing to `pip install` or `npm install`.
 
 ## Features
 
@@ -80,13 +80,48 @@ Then open <http://127.0.0.1:8080> (`--open` does it for you).
 | `LANTERN_LOG_FILE` | `$LANTERN_HOME/lantern-server.log` | Lantern's server log file |
 | `LANTERN_PORT` | `8080` | UI port |
 | `LANTERN_LLAMA_PORT` | UI port + 1 | llama-server port |
+| `LANTERN_REMOTE_ORIGIN` | unset | Exact Tailscale Serve HTTPS origin (experimental) |
+| `LANTERN_REMOTE_LOGIN` | unset | Exact authorized Tailscale user login (experimental) |
 
 ## Privacy and security
 
 - Both services bind to `127.0.0.1` only.
-- Requests are rejected unless the `Host` and `Origin` headers point at Lantern itself,
-  which blocks other websites (and DNS-rebinding tricks) from driving your local model.
+- Requests are rejected unless the `Host` and `Origin` headers point at Lantern itself.
+  Experimental remote access additionally requires the configured Tailscale identity and exact HTTPS origin.
 - Chats live in your browser's local storage. Lantern writes its model server log to `$LANTERN_HOME/lantern-server.log` by default, so it does not overwrite an existing `llama-server.log`.
+
+## Experimental remote access (Tailscale Serve)
+
+Install Tailscale on your computer and phone and sign into the same account.
+From an administrator PowerShell window on Windows, run (use your configured
+Lantern port if it differs from 8080):
+
+```powershell
+tailscale serve --bg 8080
+tailscale serve status
+```
+
+Follow any HTTPS setup prompt. Copy the private HTTPS URL shown by Serve and
+use your exact Tailscale login (usually your email). In your Lantern terminal:
+
+```powershell
+$env:LANTERN_REMOTE_ORIGIN = "https://your-pc.your-tailnet.ts.net"
+$env:LANTERN_REMOTE_LOGIN = "you@example.com"
+.\run.ps1
+```
+
+On macOS/Linux use the same variables with `export` and run `./run.sh`.
+Keep Lantern and the PC running and connected. Open the HTTPS address in your
+phone browser while connected to Tailscale. Test with Wi-Fi off before leaving.
+Both services remain bound to loopback; the app trusts Tailscale Serve's
+identity header only on its local reverse-proxy connection. Do not use Funnel,
+public reverse proxies or port forwarding. Local software can still access
+the local service. Chat history and settings remain per-browser/origin, not
+synchronized. Long generations may be interrupted by mobile disconnections.
+
+Stop Serve with `tailscale serve --https=443 off` (if using the default HTTPS
+port), and restart Lantern without either remote environment variable to
+return to localhost-only use.
 
 ## Development and tests
 
