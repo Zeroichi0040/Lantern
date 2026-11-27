@@ -9,6 +9,7 @@ import atexit
 import http.client
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -44,6 +45,20 @@ UI_PORT = int(os.environ.get("LANTERN_PORT", "8080"))
 LLAMA_PORT = int(os.environ.get("LANTERN_LLAMA_PORT", str(UI_PORT + 1)))
 EXE_NAME = "llama-server.exe" if os.name == "nt" else "llama-server"
 MAX_BODY = 32 * 1024 * 1024
+REMOTE_ORIGIN = os.environ.get("LANTERN_REMOTE_ORIGIN", "").strip().rstrip("/")
+REMOTE_LOGIN = os.environ.get("LANTERN_REMOTE_LOGIN", "").strip()
+
+
+def validate_remote_config():
+    if not REMOTE_ORIGIN and not REMOTE_LOGIN:
+        return
+    if not REMOTE_LOGIN or not re.fullmatch(
+        r"https://[a-z0-9-]+\.[a-z0-9-]+\.ts\.net", REMOTE_ORIGIN
+    ):
+        raise ValueError(
+            "Set both LANTERN_REMOTE_ORIGIN (https://device.tailnet.ts.net) "
+            "and LANTERN_REMOTE_LOGIN (your Tailscale login)."
+        )
 
 
 class ApiError(Exception):
@@ -261,16 +276,34 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
-    # -- security: localhost only, same-origin only (blocks DNS rebinding/CSRF)
+    # -- security: local only by default; opt-in Tailscale Serve reverse proxy.
     def _allowed_hosts(self):
         return {f"127.0.0.1:{UI_PORT}", f"localhost:{UI_PORT}"}
 
     def _guard(self):
-        if self.headers.get("Host", "") not in self._allowed_hosts():
-            self._json(403, {"error": "Forbidden host"})
-            return False
+        host = self.headers.get("Host", "")
         origin = self.headers.get("Origin")
-        if origin and urlparse(origin).netloc not in self._allowed_hosts():
+        forwarded = self.headers.get("X-Forwarded-Host")
+        local = self._allowed_hosts()
+        # A forwarded request must never fall through to the localhost policy.
+        remote = host not in local or forwarded is not None or (
+            self.headers.get("Tailscale-User-Login") is not None
+        )
+        if remote:
+            remote_host = urlparse(REMOTE_ORIGIN).netloc
+            if (not REMOTE_ORIGIN or not REMOTE_LOGIN or
+                    self.headers.get("Tailscale-User-Login") != REMOTE_LOGIN or
+                    not (host == remote_host or (host in local and forwarded == remote_host)) or
+                    (forwarded is not None and forwarded != remote_host)):
+                self._json(403, {"error": "Forbidden remote host or identity"})
+                return False
+            # Browser POSTs must originate from the exact configured HTTPS site.
+            if (origin is not None and origin != REMOTE_ORIGIN) or (
+                    self.command == "POST" and origin != REMOTE_ORIGIN):
+                self._json(403, {"error": "Forbidden remote origin"})
+                return False
+            return True
+        if origin is not None and origin != f"http://{host}":
             self._json(403, {"error": "Forbidden origin"})
             return False
         return True
@@ -392,6 +425,10 @@ def main():
     parser = argparse.ArgumentParser(description="Lantern: local LLM studio for llama.cpp")
     parser.add_argument("--open", action="store_true", help="open the UI in your browser")
     args = parser.parse_args()
+    try:
+        validate_remote_config()
+    except ValueError as exc:
+        parser.error(str(exc))
 
     for d in (MODELS_DIR, RUNTIME_DIR):
         d.mkdir(parents=True, exist_ok=True)
@@ -408,6 +445,8 @@ def main():
     url = f"http://127.0.0.1:{UI_PORT}"
     print(f"Lantern {VERSION}")
     print(f"  UI      {url}")
+    if REMOTE_ORIGIN:
+        print(f"  remote  {REMOTE_ORIGIN} (Tailscale Serve only)")
     print(f"  models  {MODELS_DIR}")
     print(f"  runtime {find_server() or 'llama-server NOT FOUND (see README)'}")
     print("Press Ctrl+C to stop.")
