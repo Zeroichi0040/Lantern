@@ -10,6 +10,73 @@ import app as lantern
 from helpers import LanternProcess
 
 
+class RemoteGuardTests(unittest.TestCase):
+    origin = "https://desktop.example.ts.net"
+    host = "desktop.example.ts.net"
+    login = "owner@example.com"
+
+    def guard(self, headers, method="GET", enabled=True):
+        handler = object.__new__(lantern.Handler)
+        handler.headers = headers
+        handler.command = method
+        handler._json = mock.Mock()
+        with mock.patch.object(lantern, "REMOTE_ORIGIN", self.origin if enabled else ""), \
+                mock.patch.object(lantern, "REMOTE_LOGIN", self.login if enabled else ""):
+            result = handler._guard()
+        if not result:
+            self.assertEqual(handler._json.call_args.args[0], 403)
+        return result
+
+    def test_remote_opt_in_and_exact_identity(self):
+        headers = {"Host": self.host, "Tailscale-User-Login": self.login}
+        self.assertTrue(self.guard(headers))
+        self.assertFalse(self.guard(headers, enabled=False))
+        self.assertFalse(self.guard({"Host": self.host}))
+        self.assertFalse(self.guard({**headers, "Tailscale-User-Login": "other@example.com"}))
+        self.assertFalse(self.guard({**headers, "Host": "wrong.example.ts.net"}))
+
+    def test_remote_post_requires_exact_https_origin(self):
+        headers = {"Host": self.host, "Tailscale-User-Login": self.login}
+        self.assertTrue(self.guard({**headers, "Origin": self.origin}, "POST"))
+        for origin in (None, "null", "http://" + self.host, "https://evil.example"):
+            h = dict(headers)
+            if origin is not None:
+                h["Origin"] = origin
+            self.assertFalse(self.guard(h, "POST"))
+
+    def test_rewritten_proxy_host_cannot_bypass_guard(self):
+        headers = {"Host": f"127.0.0.1:{lantern.UI_PORT}",
+                   "X-Forwarded-Host": self.host}
+        self.assertFalse(self.guard(headers))
+        headers["Tailscale-User-Login"] = self.login
+        self.assertTrue(self.guard(headers))
+        self.assertFalse(self.guard(headers, enabled=False))
+        self.assertFalse(self.guard({**headers, "X-Forwarded-Host": "evil.example"}))
+
+    def test_local_access_stays_available(self):
+        host = f"127.0.0.1:{lantern.UI_PORT}"
+        self.assertTrue(self.guard({"Host": host}, enabled=False))
+        self.assertTrue(self.guard({"Host": host, "Origin": "http://" + host}, "POST"))
+        self.assertFalse(self.guard({"Host": host, "Origin": self.origin}, "POST"))
+
+    def test_remote_configuration_validation(self):
+        for origin, login, valid in (
+            ("", "", True), (self.origin, self.login, True),
+            (self.origin, "", False), ("", self.login, False),
+            ("http://" + self.host, self.login, False),
+            ("https://evil.example", self.login, False),
+            (self.origin + "/path", self.login, False),
+        ):
+            with self.subTest(origin=origin, login=login), \
+                    mock.patch.object(lantern, "REMOTE_ORIGIN", origin), \
+                    mock.patch.object(lantern, "REMOTE_LOGIN", login):
+                if valid:
+                    lantern.validate_remote_config()
+                else:
+                    with self.assertRaises(ValueError):
+                        lantern.validate_remote_config()
+
+
 class BackendTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
