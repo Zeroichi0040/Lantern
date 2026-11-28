@@ -56,6 +56,7 @@ textarea{resize:vertical}
 .btn.icon{padding:7px 10px;flex:none}
 .seg{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:3px;gap:3px}
 #mode{grid-template-columns:repeat(3,minmax(0,1fr))}
+.gpu-layer-label{display:flex;justify-content:space-between;align-items:center}
 .inference-advanced .grid2{margin:9px 0}
 .inference-advanced .btn{width:100%;margin-top:6px;font-size:12px}
 #inferenceNotice:not([hidden]){color:var(--warn)}
@@ -266,7 +267,7 @@ details.adv .grid2{margin-top:8px}
         <div class="seg" id="mode" role="group" aria-label="Inference mode">
           <button data-v="cpu" type="button">CPU</button><button data-v="hybrid" type="button">Hybrid</button><button data-v="gpu" type="button">GPU</button>
         </div>
-        <label id="gpuLayersWrap" hidden>GPU layers <span class="val" id="gpuLayerLimit"></span><input id="gpu_layers" type="number" min="1" max="1024" step="1"></label>
+        <label id="gpuLayersWrap" hidden><span class="gpu-layer-label">GPU layers <span class="val" id="gpuLayerLimit"></span></span><input id="gpu_layers" type="number" min="1" max="1024" step="1"></label>
         <div class="grid2">
           <label title="Total runtime context; divided among slots on partitioned runtimes">Context<input id="ctx" type="number" min="256" max="1048576" step="1"></label>
           <label>Threads<input id="threads" type="number" min="1" max="512" step="1"></label>

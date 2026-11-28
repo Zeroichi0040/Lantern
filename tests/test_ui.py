@@ -516,7 +516,7 @@ class UITests(unittest.TestCase):
     def test_advanced_sampling_is_sent(self):
         self.load_model()
         self.page.click("#settingsToggle")
-        self.page.locator("details.adv summary").click()
+        self.page.locator("#generationSettings details.adv summary").click()
         self.page.fill("#topk", "12")
         self.page.fill("#minp", "0.1")
         self.page.fill("#repeat", "1.2")
