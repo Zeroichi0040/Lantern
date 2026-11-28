@@ -1,6 +1,7 @@
 import http.client
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -68,6 +69,23 @@ class BackendTests(unittest.TestCase):
         _, st = self.app.request("GET", "/api/status")
         self.assertEqual(st["state"], "stopped")
         self.assertTrue(st["server_found"])
+
+    def test_free_port_probe_does_not_depend_on_connection_refusal(self):
+        # A closed Windows loopback port may time out on connect. A free bind
+        # must suffice, rather than treating such a timeout as an occupied port.
+        from helpers import free_port
+        with mock.patch.object(lantern, "LLAMA_PORT", free_port()):
+            with mock.patch.object(lantern.socket, "create_connection",
+                                   side_effect=TimeoutError("simulated closed-port timeout")) as connect:
+                self.assertTrue(lantern.Engine()._port_free())
+                connect.assert_not_called()
+
+    def test_port_probe_rejects_real_listener(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen()
+            with mock.patch.object(lantern, "LLAMA_PORT", listener.getsockname()[1]):
+                self.assertFalse(lantern.Engine()._port_free())
 
     # -- security
     def test_rejects_foreign_host(self):

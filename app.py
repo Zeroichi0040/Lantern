@@ -138,9 +138,25 @@ class Engine:
         return self.proc is not None and self.proc.poll() is None
 
     def _port_free(self):
-        # A listening process is never ours merely because it answers /health.
+        # Windows can time out on a closed loopback port instead of returning
+        # ECONNREFUSED within a short connect timeout. Probe a real bind first.
+        address = ("127.0.0.1", LLAMA_PORT)
         try:
-            with socket.create_connection(("127.0.0.1", LLAMA_PORT), timeout=0.3):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                if os.name == "nt":
+                    probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+                else:
+                    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                probe.bind(address)
+                return True
+        except OSError:
+            pass
+
+        # A previous owned server can leave sockets in TIME_WAIT. A failed
+        # bind alone does not prove a live listener; allow a refused connect.
+        # This is a preflight only: readiness still requires launch identity.
+        try:
+            with socket.create_connection(address, timeout=2):
                 return False
         except ConnectionRefusedError:
             return True
