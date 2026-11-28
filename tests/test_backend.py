@@ -2,6 +2,7 @@ import http.client
 import json
 import os
 import socket
+import struct
 import subprocess
 import sys
 import time
@@ -110,6 +111,56 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(self.app.load(threads=0)[0], 400)
         self.assertEqual(self.app.load(ctx="abc")[0], 400)
         self.assertEqual(self.app.load(mode="tpu")[0], 400)
+
+    def test_advanced_runtime_validation_preserves_loaded_server(self):
+        self.app.load()
+        before = self.app.wait_state("ready")
+        for kwargs in ({"mode": "hybrid", "gpu_layers": 0}, {"gpu_layers": 1025},
+                       {"batch": 64, "ubatch": 128}, {"batch": 0}, {"slots": 0},
+                       {"ctx": 256, "slots": 2}, {"batch_threads": -1},
+                       {"threads": True}, {"batch": 1.5}, {"ubatch": None}):
+            with self.subTest(kwargs=kwargs):
+                self.assertEqual(self.app.load(**kwargs)[0], 400)
+        self.assertEqual(self.app.wait_state("ready")["instance"], before["instance"])
+
+    def test_advanced_flags_reach_server_and_context_per_slot_is_reported(self):
+        for mode, layers in (("cpu", "0"), ("hybrid", "8"), ("gpu", "999")):
+            self.assertEqual(self.app.load(mode=mode, ctx=2048, threads=4, gpu_layers=8,
+                                          batch=128, ubatch=64, slots=2, batch_threads=6)[0], 200)
+            st = self.app.wait_state("ready")
+            self.assertEqual(st["context_per_slot"], 1024)
+            self.assertEqual(st["offload_layers"], int(layers))
+            _, flags = self.app.request("GET", "/runtime", port=self.app.llama_port)
+            self.assertEqual(flags, {"-ngl": layers, "-b": "128", "-ub": "64",
+                                     "-np": "2", "-tb": "6", "-t": "4", "-c": "2048"})
+        self.assertEqual(self.app.load(threads=3)[0], 200)
+        self.app.wait_state("ready")
+        _, flags = self.app.request("GET", "/runtime", port=self.app.llama_port)
+        self.assertEqual(flags["-tb"], "3")
+        self.assertEqual(flags["-np"], "1")
+
+    def test_gguf_layer_metadata_and_hybrid_limit(self):
+        def string(value):
+            raw = value.encode()
+            return struct.pack("<Q", len(raw)) + raw
+        path = self.app.home / "models" / "metadata.gguf"
+        raw = (b"GGUF" + struct.pack("<IQQ", 3, 0, 2)
+               + string("general.architecture") + struct.pack("<I", 8) + string("test")
+               + string("test.block_count") + struct.pack("<II", 4, 12))
+        path.write_bytes(raw)
+        try:
+            models = self.app.request("GET", "/api/models")[1]["models"]
+            self.assertEqual(next(m for m in models if m["name"] == path.name)["layers"], 12)
+            self.assertEqual(self.app.load(model=path.name, mode="hybrid", gpu_layers=13)[0], 400)
+            self.assertEqual(self.app.load(model=path.name, mode="hybrid", gpu_layers=12)[0], 200)
+            self.app.wait_state("ready")
+            self.app.request("POST", "/api/stop", {})
+            path.write_bytes(raw[:30])
+            models = self.app.request("GET", "/api/models")[1]["models"]
+            self.assertNotIn("layers", next(m for m in models if m["name"] == path.name))
+        finally:
+            self.app.request("POST", "/api/stop", {})
+            path.unlink()
 
     def test_bad_json_is_rejected(self):
         status, _ = self.app.request("POST", "/api/load", b"{not json")
