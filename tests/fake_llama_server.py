@@ -33,6 +33,8 @@ def opt(name, default=None):
 PORT = int(opt("--port"))
 N_CTX = int(opt("-c", "4096"))
 MODEL = opt("-m", "")
+ALIAS = opt("--alias", MODEL)
+KEY = opt("--api-key")
 
 if "crash" in MODEL:
     print("error: failed to load model (fake crash)", flush=True)
@@ -81,12 +83,19 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             self._send_json(200, {"status": "ok"})
+        elif self.path == "/v1/models":
+            self._send_json(200, {"data": [{"id": "wrong-instance" if "wrong-id" in MODEL else ALIAS}]})
+        elif self.path == "/props":
+            self._send_json(200, {"model_path": MODEL + ".wrong" if "wrong-path" in MODEL else MODEL})
         elif self.path == "/last-request":
             self._send_json(200, LAST)
         else:
             self._send_json(404, {"error": "not found"})
 
     def do_POST(self):
+        if KEY and self.headers.get("Authorization") != "Bearer " + KEY:
+            self._send_json(401, {"error": "unauthorized"})
+            return
         length = int(self.headers.get("Content-Length", 0))
         req = json.loads(self.rfile.read(length) or b"{}")
         LAST.clear()

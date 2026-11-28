@@ -1,13 +1,17 @@
 import http.client
 import json
 import os
+import subprocess
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 import app as lantern
-from helpers import LanternProcess
+from helpers import LanternProcess, FAKE
 
 
 class BackendTests(unittest.TestCase):
@@ -126,6 +130,82 @@ class BackendTests(unittest.TestCase):
         _, st = self.app.load(ctx=8192)
         self.assertEqual(st["ctx"], 8192)
         self.app.wait_state("ready")
+
+    def test_foreign_server_blocks_load_and_chat_without_killing_it(self):
+        foreign = subprocess.Popen([sys.executable, str(FAKE), "--port",
+                                    str(self.app.llama_port), "-m", "foreign.gguf"],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                try:
+                    if self.app.request("GET", "/health", port=self.app.llama_port)[0] == 200:
+                        break
+                except OSError:
+                    time.sleep(0.1)
+            else:
+                self.fail("foreign server did not start")
+            self.assertEqual(self.app.request("GET", "/api/status")[1]["state"], "blocked")
+            self.assertEqual(self.app.load()[0], 409)
+            self.assertEqual(self.app.request("POST", "/v1/chat/completions", {"messages": []})[0], 503)
+            self.assertEqual(self.app.request("POST", "/api/stop", {})[1]["state"], "blocked")
+            self.assertIsNone(foreign.poll())
+        finally:
+            foreign.terminate()
+            foreign.wait(timeout=10)
+        self.assertEqual(self.app.load()[0], 200)
+        self.app.wait_state("ready")
+
+    def test_switch_uses_new_verified_instance_and_rejects_stale_chat(self):
+        self.app.load()
+        before = self.app.wait_state("ready")
+        self.app.load(model="sub/big-00001-of-00002.gguf")
+        after = self.app.wait_state("ready")
+        self.assertEqual(after["model"], "sub/big-00001-of-00002.gguf")
+        self.assertNotEqual(before["instance"], after["instance"])
+        self.assertEqual(self.app.request("POST", "/v1/chat/completions", {"messages": []},
+                         headers={"X-Lantern-Instance": before["instance"]})[0], 409)
+        self.assertEqual(self.app.request("POST", "/v1/chat/completions", {"messages": []},
+                         headers={"X-Lantern-Instance": after["instance"]})[0], 200)
+
+    def test_wrong_identity_or_model_path_never_becomes_ready(self):
+        for name in ("wrong-id.gguf", "wrong-path.gguf"):
+            path = self.app.home / "models" / name
+            path.write_bytes(b"test")
+            try:
+                self.assertEqual(self.app.load(model=name)[0], 200)
+                st = self.app.wait_state("blocked")
+                self.assertNotIn("instance", st)
+                self.assertEqual(self.app.request("POST", "/v1/chat/completions", {"messages": []})[0], 503)
+            finally:
+                self.app.request("POST", "/api/stop", {})
+                path.unlink()
+
+    def test_concurrent_loads_are_serialized(self):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(self.app.load, ctx=2048)
+            second = pool.submit(self.app.load, ctx=8192)
+            self.assertEqual(first.result()[0], 200)
+            self.assertEqual(second.result()[0], 200)
+        st = self.app.wait_state("ready")
+        self.assertIn(st["ctx"], (2048, 8192))
+        self.assertTrue(st["instance"])
+
+    @unittest.skipUnless(os.name == "nt", "Windows job object")
+    def test_windows_job_closes_owned_process(self):
+        from process_job import WindowsJob
+        job = WindowsJob()
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        try:
+            job.assign(proc.pid)
+            job.close()
+            proc.wait(timeout=5)
+            self.assertIsNotNone(proc.poll())
+        finally:
+            job.close()
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
 
     def test_crash_is_reported_with_log_tail(self):
         self.app.load(model="crash-me.gguf")

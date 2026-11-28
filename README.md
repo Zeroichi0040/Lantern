@@ -114,3 +114,7 @@ MIT. See [LICENSE](LICENSE).
 - **Model fails to load**: the sidebar shows the last log lines; try CPU mode or a smaller context.
 - **Thinking toggle does nothing**: it depends on the model's chat template.
 - **Port in use**: set `LANTERN_PORT`.
+
+### Inference server lifecycle
+
+Lantern verifies a unique launch alias and the loaded model path before serving chat. A conflicting listener on the configured inference port is not adopted or killed; stop it yourself or set `LANTERN_LLAMA_PORT` to a free port. On Windows the owned process is assigned to a kill-on-close job object (in addition to explicit process-tree shutdown). The runtime must support llama-server's `--alias`, `--api-key`, `/v1/models`, and `/props` model path; older incompatible builds will not be marked ready.
