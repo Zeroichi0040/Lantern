@@ -233,7 +233,8 @@ class Engine:
             # Accept integer JSON values and legacy numeric strings, not bools or floats.
             if type(value) is int:
                 parsed = value
-            elif isinstance(value, str) and value.strip().isdigit() and len(value.strip()) <= 10:
+            elif (isinstance(value, str) and value.strip().isascii()
+                  and value.strip().isdigit() and len(value.strip()) <= 10):
                 parsed = int(value)
             else:
                 raise ApiError(400, f"{name} must be an integer")

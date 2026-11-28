@@ -546,6 +546,11 @@ class UITests(unittest.TestCase):
         self.assertEqual((st["mode"], st["gpu_layers"], st["batch"], st["ubatch"],
                           st["slots"], st["batch_threads"]), ("hybrid", 8, 128, 64, 2, 6))
         expect(page.locator("#inferenceNotice")).not_to_be_visible()
+        page.fill("#ubatch", "256")
+        page.locator("#load").click()
+        expect(page.locator("#toast")).to_contain_text("Physical batch")
+        self.assertEqual(self.app.request("GET", "/api/status")[1]["ubatch"], 64)
+        page.fill("#ubatch", "64")
         page.fill("#batch", "256")
         expect(page.locator("#inferenceNotice")).to_contain_text("Reload")
         self.assertEqual(self.app.request("GET", "/api/status")[1]["batch"], 128)

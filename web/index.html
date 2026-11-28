@@ -933,7 +933,7 @@ function applyModel(name){
 
 function renderStatus(){
   const st = status.state, pill = $("#pill"), hint = $("#hint");
-  pill.className = "pill " + st;
+  pill.className = "pill " + (lifecycleBusy ? "loading" : st);
   const label = {
     offline: "Backend unreachable",
     blocked: "Inference server blocked",
@@ -942,7 +942,7 @@ function renderStatus(){
     ready: `Ready · ${status.model} · ${(status.mode || "").toUpperCase()}`,
     crashed: `Model server exited (code ${status.exit_code})`
   }[st] || st;
-  pill.querySelector("span").textContent = label;
+  pill.querySelector("span").textContent = lifecycleBusy ? "Changing inference server…" : label;
   $("#load").disabled = lifecycleBusy || generating || st === "loading" || !S.model;
   $("#load").textContent = st === "ready" ? "Reload" : "Load model";
   $("#stopModel").disabled = lifecycleBusy || generating || !status.server_pid;

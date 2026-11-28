@@ -36,14 +36,18 @@ def layer_count(path):
             sizes = {0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4,
                      7: 1, 10: 8, 11: 8, 12: 8}
 
+            string_budget = 10000
+
             def skip(kind):
+                nonlocal string_budget
                 if kind == 8:
                     string(False)
                 elif kind == 9:
                     element, count = number("I"), number("Q")
                     if element in sizes:
                         fh.seek(count * sizes[element], 1)
-                    elif element == 8 and count <= 10000:
+                    elif element == 8 and count <= string_budget:
+                        string_budget -= count
                         for _ in range(count):
                             string(False)
                     else:
