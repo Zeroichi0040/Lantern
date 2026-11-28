@@ -118,3 +118,7 @@ MIT. See [LICENSE](LICENSE).
 ### Inference server lifecycle
 
 Lantern verifies a unique launch alias and the loaded model path before serving chat. A conflicting listener on the configured inference port is not adopted or killed; stop it yourself or set `LANTERN_LLAMA_PORT` to a free port. On Windows the owned process is assigned to a kill-on-close job object (in addition to explicit process-tree shutdown). The runtime must support llama-server's `--alias`, `--api-key`, `/v1/models`, and `/props` model path; older incompatible builds will not be marked ready.
+
+### Advanced inference
+
+The model sidebar has CPU, Hybrid and GPU modes. Hybrid allows selecting the number of repeating GPU layers (GGUF metadata supplies the limit when readable); GPU requests full offload. Under Advanced inference, configure logical batch size (`-b`, default 2048), physical batch size (`-ub`, default 512), parallel slots (`-np`, default 1), and prompt threads (`-tb`, 0 follows generation threads). All are saved per model. Changes require reloading; generation sampling can still change between replies. For constrained memory, start with one slot, context 1024, 4 threads, Hybrid 8 layers, batch 128 and physical batch 64, then tune. These are not automatic hardware recommendations. Multiple slots may divide the available context; the context meter uses the runtime-reported slot context when available. Older saved CPU/GPU profiles remain valid; new settings default as above. No additional dependencies.

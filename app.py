@@ -22,6 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 from process_job import WindowsJob
+from gguf_metadata import layer_count
 
 VERSION = "1.0.0"
 HERE = Path(__file__).resolve().parent
@@ -84,16 +85,18 @@ def _is_secondary_shard(name):
     return total.isdigit() and idx.isdigit() and int(idx) != 1
 
 
-def list_models():
+def list_models(include_metadata=False):
     models = []
     if MODELS_DIR.is_dir():
         for p in sorted(MODELS_DIR.rglob("*.gguf")):
             if not p.is_file() or "mmproj" in p.name.lower() or _is_secondary_shard(p.name):
                 continue
-            models.append({
-                "name": p.relative_to(MODELS_DIR).as_posix(),
-                "size": p.stat().st_size,
-            })
+            item = {"name": p.relative_to(MODELS_DIR).as_posix(), "size": p.stat().st_size}
+            if include_metadata:
+                blocks = layer_count(p)
+                if blocks is not None:
+                    item["layers"] = blocks
+            models.append(item)
     return models
 
 
@@ -203,13 +206,18 @@ class Engine:
         if not self.running():
             self.last_exit = self.proc.returncode
             return "crashed" if self.last_exit else "stopped"
+        generation = props.get("default_generation_settings")
+        actual_ctx = generation.get("n_ctx") if isinstance(generation, dict) else None
+        if type(actual_ctx) is int and actual_ctx > 0:
+            self.info["context_per_slot"] = actual_ctx
         return "ready"
 
     def ready(self):
         with self.lock:
             return self.state() == "ready"
 
-    def start(self, model, mode, ctx, threads):
+    def start(self, model, mode, ctx, threads, gpu_layers=8, batch=2048,
+              ubatch=512, slots=1, batch_threads=0):
         exe = find_server()
         if exe is None:
             raise ApiError(
@@ -218,16 +226,36 @@ class Engine:
                 "or add it to PATH.",
             )
         path = resolve_model(model)
-        if mode not in ("cpu", "gpu"):
-            raise ApiError(400, "mode must be 'cpu' or 'gpu'")
-        try:
-            ctx, threads = int(ctx), int(threads)
-        except (TypeError, ValueError):
-            raise ApiError(400, "ctx and threads must be integers")
-        if not 256 <= ctx <= 1_048_576:
-            raise ApiError(400, "ctx must be between 256 and 1048576")
-        if not 1 <= threads <= 512:
-            raise ApiError(400, "threads must be between 1 and 512")
+        if mode not in ("cpu", "hybrid", "gpu"):
+            raise ApiError(400, "mode must be 'cpu', 'hybrid' or 'gpu'")
+
+        def integer(name, value, low, high):
+            # Accept integer JSON values and legacy numeric strings, not bools or floats.
+            if type(value) is int:
+                parsed = value
+            elif (isinstance(value, str) and value.strip().isascii()
+                  and value.strip().isdigit() and len(value.strip()) <= 10):
+                parsed = int(value)
+            else:
+                raise ApiError(400, f"{name} must be an integer")
+            if not low <= parsed <= high:
+                raise ApiError(400, f"{name} must be between {low} and {high}")
+            return parsed
+
+        ctx = integer("ctx", ctx, 256, 1048576)
+        threads = integer("threads", threads, 1, 512)
+        gpu_layers = integer("gpu_layers", gpu_layers, 1, 1024)
+        batch = integer("batch", batch, 1, 1048576)
+        ubatch = integer("ubatch", ubatch, 1, batch)
+        slots = integer("slots", slots, 1, 64)
+        batch_threads = integer("batch_threads", batch_threads, 0, 512)
+        if ctx < 256 * slots:
+            raise ApiError(400, "Context must provide at least 256 tokens per parallel slot")
+        blocks = layer_count(path) if mode == "hybrid" else None
+        if blocks is not None and gpu_layers > blocks:
+            raise ApiError(400, f"This model has {blocks} repeating layers; use GPU mode for full offload")
+        offload = 0 if mode == "cpu" else 999 if mode == "gpu" else gpu_layers
+        effective_batch_threads = batch_threads or threads
 
         with self.lock:
             self._stop_locked()
@@ -242,7 +270,8 @@ class Engine:
                 "--alias", instance, "--api-key", key,
                 "--host", "127.0.0.1", "--port", str(LLAMA_PORT),
                 "-c", str(ctx), "-t", str(threads),
-                "-ngl", "99" if mode == "gpu" else "0",
+                "-ngl", str(offload), "-b", str(batch), "-ub", str(ubatch),
+                "-np", str(slots), "-tb", str(effective_batch_threads),
                 "--jinja",
             ]
             flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
@@ -261,7 +290,11 @@ class Engine:
             self.last_exit = None
             self.instance, self.key = instance, key
             self.model_path = os.path.normcase(os.path.abspath(path.resolve()))
-            self.info = {"model": model, "mode": mode, "ctx": ctx, "threads": threads}
+            self.info = {"model": model, "mode": mode, "ctx": ctx, "threads": threads,
+                         "gpu_layers": gpu_layers, "offload_layers": offload,
+                         "batch": batch, "ubatch": ubatch, "slots": slots,
+                         "batch_threads": batch_threads,
+                         "context_per_slot": ctx // slots}
             return self.snapshot()
 
     def _stop_locked(self):
@@ -410,7 +443,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/status":
                 self._json(200, engine.snapshot())
             elif path == "/api/models":
-                self._json(200, {"models": list_models(), "models_dir": str(MODELS_DIR)})
+                self._json(200, {"models": list_models(include_metadata=True), "models_dir": str(MODELS_DIR)})
             elif path == "/favicon.ico":
                 self.send_response(204)
                 self.end_headers()
@@ -431,6 +464,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, engine.start(
                     data.get("model"), data.get("mode", "cpu"),
                     data.get("ctx", 4096), data.get("threads", os.cpu_count() or 4),
+                    gpu_layers=data.get("gpu_layers", 8), batch=data.get("batch", 2048),
+                    ubatch=data.get("ubatch", 512), slots=data.get("slots", 1),
+                    batch_threads=data.get("batch_threads", 0),
                 ))
             elif path == "/api/stop":
                 self._json(200, engine.stop())

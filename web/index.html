@@ -55,6 +55,11 @@ textarea{resize:vertical}
 .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:600}
 .btn.icon{padding:7px 10px;flex:none}
 .seg{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:3px;gap:3px}
+#mode{grid-template-columns:repeat(3,minmax(0,1fr))}
+.gpu-layer-label{display:flex;justify-content:space-between;align-items:center}
+.inference-advanced .grid2{margin:9px 0}
+.inference-advanced .btn{width:100%;margin-top:6px;font-size:12px}
+#inferenceNotice:not([hidden]){color:var(--warn)}
 .seg button{border:0;background:none;border-radius:6px;padding:5px;color:var(--muted)}
 .seg button.on{background:var(--panel2);color:var(--text);box-shadow:0 0 0 1px var(--line)}
 .pill{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
@@ -260,12 +265,25 @@ details.adv .grid2{margin-top:8px}
           <button class="btn icon" id="refresh" title="Rescan models folder" aria-label="Refresh">↻</button>
         </div>
         <div class="seg" id="mode" role="group" aria-label="Inference mode">
-          <button data-v="cpu">CPU</button><button data-v="gpu">GPU</button>
+          <button data-v="cpu" type="button">CPU</button><button data-v="hybrid" type="button">Hybrid</button><button data-v="gpu" type="button">GPU</button>
         </div>
+        <label id="gpuLayersWrap" hidden><span class="gpu-layer-label">GPU layers <span class="val" id="gpuLayerLimit"></span></span><input id="gpu_layers" type="number" min="1" max="1024" step="1"></label>
         <div class="grid2">
-          <label>Context<input id="ctx" type="number" min="256" step="256"></label>
-          <label>Threads<input id="threads" type="number" min="1"></label>
+          <label title="Total runtime context; divided among slots on partitioned runtimes">Context<input id="ctx" type="number" min="256" max="1048576" step="1"></label>
+          <label>Threads<input id="threads" type="number" min="1" max="512" step="1"></label>
         </div>
+        <details class="adv inference-advanced" id="inferenceSettings">
+          <summary>Advanced inference</summary>
+          <div class="grid2">
+            <label>Batch size<input id="batch" type="number" min="1" max="1048576" step="1"></label>
+            <label title="Reduce to lower peak compute memory">Physical batch<input id="ubatch" type="number" min="1" max="1048576" step="1"></label>
+            <label>Parallel slots<input id="slots" type="number" min="1" max="64" step="1"></label>
+            <label title="0 = same as generation threads">Prompt threads<input id="batch_threads" type="number" min="0" max="512" step="1"></label>
+          </div>
+          <div class="hint" id="slotContext" hidden></div>
+          <button type="button" class="btn" id="resetInference">Reset advanced settings</button>
+        </details>
+        <div class="hint" id="inferenceNotice" role="status" hidden></div>
         <div class="row">
           <button class="btn primary" id="load" style="flex:1">Load model</button>
           <button class="btn" id="stopModel">Stop</button>
@@ -361,7 +379,7 @@ details.adv .grid2{margin-top:8px}
               </section>
             </section>
             <section class="settings-group" id="modelSettings">
-              <div class="settings-group-heading"><div><h2>Model</h2><p>Generation parameters control how your loaded model responds.</p></div></div>
+              <div class="settings-group-heading"><div><h2>Model</h2><p>Generation changes apply to the next reply. Inference settings are in the model sidebar and require a reload.</p></div></div>
               <details class="card settings-card" id="generationSettings" open>
                 <summary>Generation</summary>
                 <label>Temperature <span class="val" id="tempv"></span><input id="temp" type="range" min="0" max="2" step="0.05"></label>
@@ -427,8 +445,10 @@ const store = {
   }
 };
 // Settings remembered separately for each model (context size, thinking, sampling, ...).
-const MODEL_KEYS = ["mode", "ctx", "threads", "thinking", "temp", "top", "topk", "minp", "repeat", "maxtok"];
-const defaults = {model:"", mode:"cpu", ctx:4096, threads:4, temp:0.7, top:0.95, topk:40, minp:0.05, repeat:1, seed:-1, maxtok:0, system:"", thinking:true, perModel:{}};
+const INFERENCE_KEYS = ["mode", "ctx", "threads", "gpu_layers", "batch", "ubatch", "slots", "batch_threads"];
+const ADVANCED_DEFAULTS = {gpu_layers:8, batch:2048, ubatch:512, slots:1, batch_threads:0};
+const MODEL_KEYS = [...INFERENCE_KEYS, "thinking", "temp", "top", "topk", "minp", "repeat", "maxtok"];
+const defaults = {model:"", mode:"cpu", ctx:4096, threads:4, ...ADVANCED_DEFAULTS, temp:0.7, top:0.95, topk:40, minp:0.05, repeat:1, seed:-1, maxtok:0, system:"", thinking:true, perModel:{}};
 let S = {...defaults, ...store.get("lantern.settings", {})};
 if (!S.perModel || typeof S.perModel !== "object") S.perModel = {};
 const uiDefaults = {
@@ -444,6 +464,7 @@ const saveUI = () => store.set("lantern.ui-settings", UI);
 let convs = store.get("lantern.convs", []);
 let activeId = store.get("lantern.active", null);
 let status = {state:"offline"};
+let discoveredModels = new Map();
 let lifecycleBusy = false, lifecycleEpoch = 0;
 let generating = false, controller = null, threadsTouched = !!store.get("lantern.settings", null);
 
@@ -803,7 +824,7 @@ function renderMeter(){
     const u = c.messages[i].usage;
     if (u){ used = u.p + u.c; break; }
   }
-  const total = status.state === "ready" ? status.ctx : 0;
+  const total = status.state === "ready" ? (status.context_per_slot || status.ctx) : 0;
   if (!used || !total){ box.hidden = true; return; }
   const pct = Math.min(100, used / total * 100);
   box.hidden = false;
@@ -881,6 +902,7 @@ const fmtSize = b => b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : (b / 1e6).toFixed
 async function loadModels(){
   try {
     const j = await api("/api/models");
+    discoveredModels = new Map(j.models.map(m => [m.name, m]));
     const sel = $("#model"); sel.innerHTML = "";
     if (!j.models.length){
       sel.innerHTML = "<option value=''>No .gguf models found</option>";
@@ -889,21 +911,30 @@ async function loadModels(){
       if (j.models.some(m => m.name === S.model)) sel.value = S.model;
       else { applyModel(j.models[0].name); return; }
     }
-    saveS();
+    saveS(); syncControls(); renderStatus();
   } catch (e) { toast(e.message); }
 }
 
 // Switch the selected model and restore the settings last used with it.
 function applyModel(name){
+  const previous = S.model;
   S.model = name;
   const p = S.perModel[name];
-  if (p){ for (const k of MODEL_KEYS) if (k in p) S[k] = p[k]; threadsTouched = true; }
+  if (previous !== name){
+    for (const k of MODEL_KEYS){
+      S[k] = p && Object.prototype.hasOwnProperty.call(p,k) ? p[k] : defaults[k];
+    }
+    if (!p || !Object.prototype.hasOwnProperty.call(p,"threads")){
+      S.threads = status.cpu_count ? Math.max(1, Math.floor(status.cpu_count / 2)) : defaults.threads;
+    }
+    threadsTouched = !!(p && Object.prototype.hasOwnProperty.call(p,"threads"));
+  }
   saveS(); syncControls(); renderStatus();
 }
 
 function renderStatus(){
   const st = status.state, pill = $("#pill"), hint = $("#hint");
-  pill.className = "pill " + st;
+  pill.className = "pill " + (lifecycleBusy ? "loading" : st);
   const label = {
     offline: "Backend unreachable",
     blocked: "Inference server blocked",
@@ -912,13 +943,14 @@ function renderStatus(){
     ready: `Ready · ${status.model} · ${(status.mode || "").toUpperCase()}`,
     crashed: `Model server exited (code ${status.exit_code})`
   }[st] || st;
-  pill.querySelector("span").textContent = label;
+  pill.querySelector("span").textContent = lifecycleBusy ? "Changing inference server…" : label;
   $("#load").disabled = lifecycleBusy || generating || st === "loading" || !S.model;
   $("#load").textContent = st === "ready" ? "Reload" : "Load model";
   $("#stopModel").disabled = lifecycleBusy || generating || !status.server_pid;
   if (status.version) $("#ver").textContent = "v" + status.version;
   if (!threadsTouched && status.cpu_count){
     S.threads = Math.max(1, Math.floor(status.cpu_count / 2)); $("#threads").value = S.threads;
+    threadsTouched = true; saveS();
   }
   hint.textContent = "";
   if (status.problem){
@@ -971,7 +1003,26 @@ async function changeEngine(path, body){
   }
 }
 
-$("#load").onclick = () => changeEngine("/api/load", {model: S.model, mode: S.mode, ctx: S.ctx, threads: S.threads});
+function inferencePayload(){
+  const body = {model:S.model};
+  for (const key of INFERENCE_KEYS) body[key] = S[key];
+  return body;
+}
+
+$("#load").onclick = () => {
+  for (const key of INFERENCE_KEYS.filter(k => k !== "mode")){
+    const control = $("#" + key);
+    if (key === "gpu_layers" && S.mode !== "hybrid") continue;
+    if (!control.value || !control.checkValidity()) {
+      if (control.closest("details")) control.closest("details").open = true;
+      control.reportValidity();
+      return toast("Check the inference settings.");
+    }
+  }
+  if (S.ubatch > S.batch) return toast("Physical batch cannot exceed batch size.");
+  if (S.ctx < S.slots * 256) return toast("Allow at least 256 context tokens per slot.");
+  changeEngine("/api/load", inferencePayload());
+};
 $("#stopModel").onclick = () => changeEngine("/api/stop", {});
 $("#refresh").onclick = loadModels;
 
@@ -983,6 +1034,7 @@ function updateSend(){
   b.disabled = !generating && (lifecycleBusy || !input.value.trim() || status.state !== "ready");
   $("#load").disabled = lifecycleBusy || generating || status.state === "loading" || !S.model;
   $("#stopModel").disabled = lifecycleBusy || generating || !status.server_pid;
+  renderInferenceNotice();
   input.placeholder = status.state === "ready"
     ? (UI.modelPlaceholder && status.model ? `Message ${status.model}` : "Message your local model…")
     : "Load a model to start chatting…";
@@ -1338,14 +1390,39 @@ $("#export").onclick = () => {
 };
 
 /* ---------- settings bindings ---------- */
-function markMode(){ document.querySelectorAll("#mode button").forEach(b => b.classList.toggle("on", b.dataset.v === S.mode)); }
+function renderInferenceNotice(){
+  const note = $("#inferenceNotice");
+  const keys = INFERENCE_KEYS.filter(k => k !== "gpu_layers" || S.mode === "hybrid");
+  const pending = status.state === "ready" && (status.model !== S.model || keys.some(k => status[k] !== S[k]));
+  note.hidden = !pending;
+  note.textContent = pending ? "Reload to apply inference changes." : "";
+  const slot = $("#slotContext");
+  slot.hidden = !(S.slots > 1);
+  slot.textContent = S.slots > 1 ? `~${Math.floor(S.ctx / S.slots).toLocaleString()} tokens per slot if partitioned` : "";
+}
+function markMode(){
+  document.querySelectorAll("#mode button").forEach(b => {
+    const selected = b.dataset.v === S.mode;
+    b.classList.toggle("on", selected);
+    b.setAttribute("aria-pressed", String(selected));
+  });
+  const layers = discoveredModels.get(S.model)?.layers;
+  const control = $("#gpu_layers");
+  $("#gpuLayersWrap").hidden = S.mode !== "hybrid";
+  control.max = layers || 1024;
+  $("#gpuLayerLimit").textContent = layers ? `/ ${layers}` : "";
+  if (layers && S.gpu_layers > layers){
+    S.gpu_layers = layers; control.value = layers; saveS();
+  }
+  renderInferenceNotice();
+}
 function markThink(){ const b = $("#think"); b.classList.toggle("on", S.thinking); b.textContent = "Thinking " + (S.thinking ? "on" : "off"); }
 
 // Push the current settings into every control (used at startup and when the model changes).
 function syncControls(){
   const sel = $("#model");
   if ([...sel.options].some(o => o.value === S.model)) sel.value = S.model;
-  for (const [id, key] of [["ctx", "ctx"], ["threads", "threads"], ["maxtok", "maxtok"], ["topk", "topk"],
+  for (const [id, key] of [["ctx", "ctx"], ["threads", "threads"], ...Object.keys(ADVANCED_DEFAULTS).map(k => [k,k]), ["maxtok", "maxtok"], ["topk", "topk"],
                            ["minp", "minp"], ["repeat", "repeat"], ["seed", "seed"], ["temp", "temp"], ["top", "top"]]) $("#" + id).value = S[key];
   $("#tempv").textContent = (+S.temp).toFixed(2);
   $("#topv").textContent = (+S.top).toFixed(2);
@@ -1404,9 +1481,19 @@ function bindSettings(){
     const v = parse(e.target.value);
     if (!Number.isNaN(v)){ S[key] = v; saveS(); }
   });
-  num("ctx", "ctx", v => parseInt(v, 10));
-  num("threads", "threads", v => parseInt(v, 10));
-  $("#threads").addEventListener("input", () => threadsTouched = true);
+  for (const key of INFERENCE_KEYS.filter(k => k !== "mode")){
+    $("#" + key).addEventListener("input", e => {
+      if (e.target.value !== "" && e.target.checkValidity() && Number.isInteger(e.target.valueAsNumber)){
+        S[key] = e.target.valueAsNumber;
+        if (key === "threads") threadsTouched = true;
+        saveS(); renderInferenceNotice();
+      }
+    });
+  }
+  $("#resetInference").onclick = () => {
+    Object.assign(S, ADVANCED_DEFAULTS);
+    saveS(); syncControls();
+  };
   num("maxtok", "maxtok", v => parseInt(v, 10) || 0);
   num("topk", "topk", v => parseInt(v, 10) || 0);
   num("minp", "minp", v => Number(v) || 0);

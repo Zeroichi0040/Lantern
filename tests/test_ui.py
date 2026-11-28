@@ -516,7 +516,7 @@ class UITests(unittest.TestCase):
     def test_advanced_sampling_is_sent(self):
         self.load_model()
         self.page.click("#settingsToggle")
-        self.page.locator("details.adv summary").click()
+        self.page.locator("#generationSettings details.adv summary").click()
         self.page.fill("#topk", "12")
         self.page.fill("#minp", "0.1")
         self.page.fill("#repeat", "1.2")
@@ -527,6 +527,48 @@ class UITests(unittest.TestCase):
         _, last = self.app.request("GET", "/last-request", port=self.app.llama_port)
         self.assertEqual((last["top_k"], last["min_p"], last["repeat_penalty"], last["seed"]),
                          (12, 0.1, 1.2, 42))
+
+    def test_advanced_inference_controls_persist_and_require_reload(self):
+        page = self.page
+        expect(page.locator("#gpu_layers")).not_to_be_visible()
+        page.locator('#mode [data-v="hybrid"]').click()
+        expect(page.locator("#gpu_layers")).to_be_visible()
+        page.fill("#gpu_layers", "8")
+        page.locator("#inferenceSettings summary").click()
+        page.fill("#ctx", "2048")
+        page.fill("#threads", "4")
+        page.fill("#batch", "128")
+        page.fill("#ubatch", "64")
+        page.fill("#slots", "2")
+        page.fill("#batch_threads", "6")
+        self.load_model()
+        st = self.app.request("GET", "/api/status")[1]
+        self.assertEqual((st["mode"], st["gpu_layers"], st["batch"], st["ubatch"],
+                          st["slots"], st["batch_threads"]), ("hybrid", 8, 128, 64, 2, 6))
+        expect(page.locator("#inferenceNotice")).not_to_be_visible()
+        page.fill("#ubatch", "256")
+        page.locator("#load").click()
+        expect(page.locator("#toast")).to_contain_text("Physical batch")
+        self.assertEqual(self.app.request("GET", "/api/status")[1]["ubatch"], 64)
+        page.fill("#ubatch", "64")
+        page.fill("#batch", "256")
+        expect(page.locator("#inferenceNotice")).to_contain_text("Reload")
+        self.assertEqual(self.app.request("GET", "/api/status")[1]["batch"], 128)
+        self.load_model()
+        expect(page.locator("#inferenceNotice")).not_to_be_visible()
+        self.assertEqual(self.app.request("GET", "/api/status")[1]["batch"], 256)
+        page.select_option("#model", "crash-me.gguf")
+        self.assertEqual(page.input_value("#batch"), "2048")
+        page.select_option("#model", "test-model.gguf")
+        self.assertEqual(page.input_value("#batch"), "256")
+        page.reload()
+        expect(page.locator("#model")).to_have_value("test-model.gguf")
+        self.assertEqual(page.input_value("#batch"), "256")
+        self.assertEqual(page.input_value("#batch_threads"), "6")
+        page.locator("#inferenceSettings summary").click()
+        page.locator("#resetInference").click()
+        self.assertEqual(page.input_value("#batch"), "2048")
+        self.assertEqual(page.input_value("#ubatch"), "512")
 
     def test_settings_are_remembered_per_model(self):
         self.page.fill("#ctx", "2048")                       # test-model

@@ -31,7 +31,9 @@ def opt(name, default=None):
 
 
 PORT = int(opt("--port"))
-N_CTX = int(opt("-c", "4096"))
+SLOTS = int(opt("-np", "1"))
+N_CTX = int(opt("-c", "4096")) // SLOTS
+RUNTIME = {flag: opt(flag) for flag in ("-ngl", "-b", "-ub", "-np", "-tb", "-t", "-c")}
 MODEL = opt("-m", "")
 ALIAS = opt("--alias", MODEL)
 KEY = opt("--api-key")
@@ -86,7 +88,10 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/v1/models":
             self._send_json(200, {"data": [{"id": "wrong-instance" if "wrong-id" in MODEL else ALIAS}]})
         elif self.path == "/props":
-            self._send_json(200, {"model_path": MODEL + ".wrong" if "wrong-path" in MODEL else MODEL})
+            self._send_json(200, {"model_path": MODEL + ".wrong" if "wrong-path" in MODEL else MODEL,
+                                  "default_generation_settings": {"n_ctx": N_CTX}, "total_slots": SLOTS})
+        elif self.path == "/runtime":
+            self._send_json(200, RUNTIME)
         elif self.path == "/last-request":
             self._send_json(200, LAST)
         else:
