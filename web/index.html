@@ -444,6 +444,7 @@ const saveUI = () => store.set("lantern.ui-settings", UI);
 let convs = store.get("lantern.convs", []);
 let activeId = store.get("lantern.active", null);
 let status = {state:"offline"};
+let lifecycleBusy = false, lifecycleEpoch = 0;
 let generating = false, controller = null, threadsTouched = !!store.get("lantern.settings", null);
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
@@ -905,21 +906,24 @@ function renderStatus(){
   pill.className = "pill " + st;
   const label = {
     offline: "Backend unreachable",
+    blocked: "Inference server blocked",
     stopped: "No model loaded",
     loading: `Loading ${status.model || "model"}…`,
     ready: `Ready · ${status.model} · ${(status.mode || "").toUpperCase()}`,
     crashed: `Model server exited (code ${status.exit_code})`
   }[st] || st;
   pill.querySelector("span").textContent = label;
-  $("#load").disabled = st === "loading" || !S.model;
+  $("#load").disabled = lifecycleBusy || generating || st === "loading" || !S.model;
   $("#load").textContent = st === "ready" ? "Reload" : "Load model";
-  $("#stopModel").disabled = !(st === "ready" || st === "loading");
+  $("#stopModel").disabled = lifecycleBusy || generating || !status.server_pid;
   if (status.version) $("#ver").textContent = "v" + status.version;
   if (!threadsTouched && status.cpu_count){
     S.threads = Math.max(1, Math.floor(status.cpu_count / 2)); $("#threads").value = S.threads;
   }
   hint.textContent = "";
-  if (st === "crashed" && status.log_tail){
+  if (status.problem){
+    hint.textContent = status.problem;
+  } else if (st === "crashed" && status.log_tail){
     const pre = document.createElement("pre"); pre.textContent = status.log_tail;
     hint.append("Last log lines:", pre);
   } else if (status.server_found === false){
@@ -935,21 +939,40 @@ function renderStatus(){
 
 let pollTimer;
 async function poll(){
-  try { status = await api("/api/status"); } catch { status = {state: "offline"}; }
-  renderStatus();
+  const epoch = lifecycleEpoch;
+  if (!lifecycleBusy){
+    let next;
+    try { next = await api("/api/status"); } catch { next = {state: "offline"}; }
+    if (epoch === lifecycleEpoch && !lifecycleBusy){
+      status = next;
+      renderStatus();
+    }
+  }
   clearTimeout(pollTimer);
   pollTimer = setTimeout(poll, status.state === "loading" ? 1000 : 4000);
 }
 
-$("#load").onclick = async () => {
+async function changeEngine(path, body){
+  if (lifecycleBusy || generating) return;
+  lifecycleBusy = true;
+  ++lifecycleEpoch;
+  clearTimeout(pollTimer);
+  renderStatus();
   try {
-    status = await api("/api/load", {method: "POST", body: {model: S.model, mode: S.mode, ctx: S.ctx, threads: S.threads}});
-    renderStatus(); poll();
-  } catch (e) { toast(e.message); }
-};
-$("#stopModel").onclick = async () => {
-  try { status = await api("/api/stop", {method: "POST", body: {}}); renderStatus(); } catch (e) { toast(e.message); }
-};
+    status = await api(path, {method: "POST", body});
+  } catch (e) {
+    // A failed load may have stopped the previous engine.
+    status = {state: "offline"};
+    toast(e.message);
+  } finally {
+    lifecycleBusy = false;
+    renderStatus();
+    poll();
+  }
+}
+
+$("#load").onclick = () => changeEngine("/api/load", {model: S.model, mode: S.mode, ctx: S.ctx, threads: S.threads});
+$("#stopModel").onclick = () => changeEngine("/api/stop", {});
 $("#refresh").onclick = loadModels;
 
 /* ---------- generation ---------- */
@@ -957,9 +980,11 @@ function updateSend(){
   const b = $("#send");
   b.classList.toggle("stop", generating);
   b.textContent = generating ? "Stop" : "Send";
-  b.disabled = !generating && !input.value.trim();
+  b.disabled = !generating && (lifecycleBusy || !input.value.trim() || status.state !== "ready");
+  $("#load").disabled = lifecycleBusy || generating || status.state === "loading" || !S.model;
+  $("#stopModel").disabled = lifecycleBusy || generating || !status.server_pid;
   input.placeholder = status.state === "ready"
-    ? (UI.modelPlaceholder && S.model ? `Message ${S.model}` : "Message your local model…")
+    ? (UI.modelPlaceholder && status.model ? `Message ${status.model}` : "Message your local model…")
     : "Load a model to start chatting…";
 }
 
@@ -1010,6 +1035,8 @@ function resolveAssistantDisplayName(){
   return "Lantern";
 }
 async function generate(c, options = {}){
+  if (lifecycleBusy || status.state !== "ready") return toast("Load a verified model first.");
+  const instance = status.instance;
   const m = {
     role: "assistant", content: "", reasoning: "",
     displayName: resolveAssistantDisplayName(),
@@ -1036,7 +1063,7 @@ async function generate(c, options = {}){
   let chunks = 0, timings = null, usage = null;
 
   try {
-    const r = await fetch("/v1/chat/completions", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(chatBody(c, !!m.continuation)), signal: controller.signal});
+    const r = await fetch("/v1/chat/completions", {method: "POST", headers: {"Content-Type": "application/json", "X-Lantern-Instance": instance}, body: JSON.stringify(chatBody(c, !!m.continuation)), signal: controller.signal});
     if (!r.ok) throw apiError(await r.json().catch(() => ({})), r.statusText);
     const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
     for (;;){
@@ -1107,7 +1134,7 @@ async function send(){
   if (generating) return;
   const text = input.value.trim();
   if (!text) return;
-  if (status.state !== "ready") return toast("Load a model first.");
+  if (lifecycleBusy || status.state !== "ready") return toast("Load a verified model first.");
   const c = active() || newConv();
   c.messages.push({role: "user", content: text});
   input.value = ""; autosize();
@@ -1212,7 +1239,7 @@ async function continueStory(){
   const c = active();
   const last = c && c.messages[c.messages.length - 1];
   if (!last || last.role !== "assistant" || !last.content || last.error) return;
-  if (status.state !== "ready") return toast("Load a model first.");
+  if (lifecycleBusy || status.state !== "ready") return toast("Load a verified model first.");
 
   // Generate a separate bubble after injecting a hidden, request-only user turn.
   await generate(c, {continuePrompt: true});
@@ -1227,7 +1254,7 @@ chat.addEventListener("click", async e => {
     if (c && c.messages[idx]){ await copy(view(c.messages[idx]).content); toast("Copied"); }
   } else if (t.classList.contains("regen")){
     const c = active(); if (!c || generating) return;
-    if (status.state !== "ready") return toast("Load a model first.");
+    if (lifecycleBusy || status.state !== "ready") return toast("Load a verified model first.");
     const continuePrompt = !!c.messages[c.messages.length - 1].continuation;
     c.messages.pop(); await generate(c, {continuePrompt});
   } else if (t.classList.contains("delete-message")){
@@ -1253,14 +1280,14 @@ chat.addEventListener("click", async e => {
     if (!c || !ta || generating) return;
     const text = ta.value.trim();
     if (!text) return;
-    if (status.state !== "ready") return toast("Load a model first.");
+    if (lifecycleBusy || status.state !== "ready") return toast("Load a verified model first.");
     c.messages = c.messages.slice(0, idx);            // drop this message and everything after it
     c.messages.push({role: "user", content: text});
     if ((c.skip || 0) > idx) c.skip = idx;
     await generate(c);
   } else if (t.classList.contains("trim")){
     const c = active(); if (!c || generating) return;
-    if (status.state !== "ready") return toast("Load a model first.");
+    if (lifecycleBusy || status.state !== "ready") return toast("Load a verified model first.");
     // Keep the latest user turn for a normal reply, or the latest assistant passage
     // for a continuation retry. Older messages can be trimmed in either case.
     const failed = c.messages[c.messages.length - 1];

@@ -10,6 +10,9 @@ import http.client
 import json
 import os
 import shutil
+import secrets
+import socket
+import time
 import signal
 import subprocess
 import sys
@@ -18,6 +21,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
+from process_job import WindowsJob
 
 VERSION = "1.0.0"
 HERE = Path(__file__).resolve().parent
@@ -119,36 +123,91 @@ def tail(path, n=40):
 
 class Engine:
     def __init__(self):
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.proc = None
         self.logfh = None
         self.info = {}
         self.last_exit = None
+        self.job = None
+        self.instance = None
+        self.key = None
+        self.model_path = None
+        self.problem = None
 
     def running(self):
         return self.proc is not None and self.proc.poll() is None
 
-    def _health(self):
+    def _port_free(self):
+        # Windows can time out on a closed loopback port instead of returning
+        # ECONNREFUSED within a short connect timeout. Probe a real bind first.
+        address = ("127.0.0.1", LLAMA_PORT)
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                if os.name == "nt":
+                    probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+                else:
+                    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                probe.bind(address)
+                return True
+        except OSError:
+            pass
+
+        # A previous owned server can leave sockets in TIME_WAIT. A failed
+        # bind alone does not prove a live listener; allow a refused connect.
+        # This is a preflight only: readiness still requires launch identity.
+        try:
+            with socket.create_connection(address, timeout=2):
+                return False
+        except ConnectionRefusedError:
+            return True
+        except OSError:
+            return False
+
+    def _get_json(self, path):
         conn = http.client.HTTPConnection("127.0.0.1", LLAMA_PORT, timeout=1)
         try:
-            conn.request("GET", "/health")
+            conn.request("GET", path, headers={"Authorization": "Bearer " + self.key})
             response = conn.getresponse()
-            response.read()
-            return response.status == 200
-        except (OSError, http.client.HTTPException):
-            return False
+            if response.status != 200:
+                return None
+            return json.loads(response.read())
+        except (OSError, ValueError, http.client.HTTPException):
+            return None
         finally:
             conn.close()
 
-    def ready(self):
-        return self.running() and self._health()
-
     def state(self):
+        # Called under the lifecycle lock. Identity must be checked again
+        # before every chat, not cached from a previous successful load.
+        self.problem = None
         if self.proc is None:
+            if not self._port_free():
+                self.problem = f"Inference port {LLAMA_PORT} is occupied. Stop the other server or use LANTERN_LLAMA_PORT."
+                return "blocked"
             return "stopped"
-        if self.proc.poll() is not None:
-            return "crashed" if self.last_exit not in (0, None) else "stopped"
-        return "ready" if self._health() else "loading"
+        if not self.running():
+            self.last_exit = self.proc.returncode
+            return "crashed" if self.last_exit else "stopped"
+        if self._get_json("/health") is None:
+            return "loading"
+        models = self._get_json("/v1/models")
+        props = self._get_json("/props")
+        entries = models.get("data", []) if isinstance(models, dict) else []
+        reported_path = props.get("model_path") if isinstance(props, dict) else None
+        if (not isinstance(entries, list) or len(entries) != 1
+                or not isinstance(entries[0], dict) or entries[0].get("id") != self.instance
+                or not isinstance(reported_path, str)
+                or os.path.normcase(os.path.abspath(reported_path)) != self.model_path):
+            self.problem = "Inference server identity or loaded model could not be verified. Stop and check the llama-server log."
+            return "blocked"
+        if not self.running():
+            self.last_exit = self.proc.returncode
+            return "crashed" if self.last_exit else "stopped"
+        return "ready"
+
+    def ready(self):
+        with self.lock:
+            return self.state() == "ready"
 
     def start(self, model, mode, ctx, threads):
         exe = find_server()
@@ -172,10 +231,15 @@ class Engine:
 
         with self.lock:
             self._stop_locked()
+            if not self._port_free():
+                raise ApiError(409, f"Inference port {LLAMA_PORT} is occupied. Stop the other server or use LANTERN_LLAMA_PORT.")
+            instance = "lantern-" + secrets.token_hex(16)
+            key = secrets.token_hex(32)
             LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
             self.logfh = open(LOG_FILE, "wb")
             args = [
-                str(exe), "-m", str(path),
+                str(exe), "-m", str(path.resolve()),
+                "--alias", instance, "--api-key", key,
                 "--host", "127.0.0.1", "--port", str(LLAMA_PORT),
                 "-c", str(ctx), "-t", str(threads),
                 "-ngl", "99" if mode == "gpu" else "0",
@@ -183,68 +247,93 @@ class Engine:
             ]
             flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
             try:
+                if os.name == "nt":
+                    self.job = WindowsJob()
                 self.proc = subprocess.Popen(
                     args, stdout=self.logfh, stderr=subprocess.STDOUT,
                     cwd=str(exe.parent), creationflags=flags,
                 )
+                if self.job is not None:
+                    self.job.assign(self.proc.pid)
             except OSError as exc:
-                raise ApiError(500, f"Could not start {exe}: {exc}")
+                self._stop_locked()
+                raise ApiError(500, f"Could not start or contain {exe}: {exc}")
             self.last_exit = None
+            self.instance, self.key = instance, key
+            self.model_path = os.path.normcase(os.path.abspath(path.resolve()))
             self.info = {"model": model, "mode": mode, "ctx": ctx, "threads": threads}
+            return self.snapshot()
 
     def _stop_locked(self):
-        if self.proc is not None and self.proc.poll() is None:
+        proc = self.proc
+        if proc is not None and proc.poll() is None:
             if os.name == "nt":
-                # Popen may own a cmd.exe wrapper (e.g. a .bat launcher) whose
-                # Python/server child inherits the log handle. Kill the tree.
+                # Also kill a launcher tree, including children created before
+                # the launcher could be assigned to the Windows job.
                 try:
                     subprocess.run(
-                        ["taskkill", "/PID", str(self.proc.pid), "/T", "/F"],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        check=False,
-                        timeout=10,
+                        ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        check=False, timeout=10,
                     )
                 except (OSError, subprocess.TimeoutExpired):
-                    self.proc.kill()
+                    pass
             else:
-                self.proc.terminate()
-
+                try:
+                    proc.terminate()
+                except ProcessLookupError:
+                    pass
+        if self.job is not None:
+            self.job.close()
+            self.job = None
+        if proc is not None:
             try:
-                self.proc.wait(timeout=8)
+                proc.wait(timeout=3)
             except subprocess.TimeoutExpired:
-                self.proc.kill()
-                self.proc.wait()
-        if self.proc is not None:
-            self.last_exit = 0  # deliberate stop is not a crash
+                try:
+                    proc.kill()
+                    proc.wait(timeout=5)
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    raise ApiError(503, f"Could not stop the owned inference process: {exc}")
+            self.last_exit = 0
         self.proc = None
         self.info = {}
+        self.instance = self.key = self.model_path = None
         if self.logfh is not None:
             self.logfh.close()
             self.logfh = None
+        # A listener may take a moment to disappear after a process tree exits.
+        if proc is not None:
+            deadline = time.monotonic() + 2
+            while not self._port_free() and time.monotonic() < deadline:
+                time.sleep(0.05)
 
     def stop(self):
         with self.lock:
             self._stop_locked()
+            return self.snapshot()
 
     def snapshot(self):
-        if self.proc is not None and self.proc.poll() is not None:
-            self.last_exit = self.proc.returncode
-        state = self.state()
-        out = {
-            "state": state,
-            "cpu_count": os.cpu_count() or 4,
-            "server_found": find_server() is not None,
-            "server_pid": self.proc.pid if self.proc is not None else None,
-            "models_dir": str(MODELS_DIR),
-            "runtime_dir": str(RUNTIME_DIR),
-            "version": VERSION,
-            **self.info,
-        }
-        if state == "crashed":
-            out["exit_code"] = self.last_exit
-            out["log_tail"] = tail(LOG_FILE)
-        return out
+        with self.lock:
+            state = self.state()
+            out = {
+                "state": state,
+                "cpu_count": os.cpu_count() or 4,
+                "server_found": find_server() is not None,
+                "server_pid": self.proc.pid if self.proc is not None else None,
+                "models_dir": str(MODELS_DIR),
+                "runtime_dir": str(RUNTIME_DIR),
+                "version": VERSION,
+                **self.info,
+            }
+            if state == "ready":
+                out["instance"] = self.instance
+            if self.problem:
+                out["problem"] = self.problem
+            if state == "crashed":
+                out["exit_code"] = self.last_exit
+                out["log_tail"] = tail(LOG_FILE)
+            return out
 
 
 engine = Engine()
@@ -339,14 +428,12 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/load":
                 data = self._read_json()
-                engine.start(
+                self._json(200, engine.start(
                     data.get("model"), data.get("mode", "cpu"),
                     data.get("ctx", 4096), data.get("threads", os.cpu_count() or 4),
-                )
-                self._json(200, engine.snapshot())
+                ))
             elif path == "/api/stop":
-                engine.stop()
-                self._json(200, engine.snapshot())
+                self._json(200, engine.stop())
             elif path == "/v1/chat/completions":
                 self._proxy_chat(self._read_body())
             else:
@@ -355,13 +442,21 @@ class Handler(BaseHTTPRequestHandler):
             self._json(exc.status, {"error": exc.message})
 
     def _proxy_chat(self, body):
-        if not engine.ready():
-            raise ApiError(503, "No model is loaded yet.")
         conn = http.client.HTTPConnection("127.0.0.1", LLAMA_PORT, timeout=900)
         sent = False
         try:
-            conn.request("POST", "/v1/chat/completions", body,
-                         {"Content-Type": "application/json"})
+            with engine.lock:
+                if not engine.ready():
+                    raise ApiError(503, engine.problem or "No verified model is loaded yet.")
+                expected = self.headers.get("X-Lantern-Instance")
+                if expected is not None and expected != engine.instance:
+                    raise ApiError(409, "The model changed before the request was sent. Try again.")
+                # Bind dispatch to this launch before another load/stop can run.
+                # The lock is released before waiting for streamed generation.
+                conn.connect()
+                conn.request("POST", "/v1/chat/completions", body,
+                             {"Content-Type": "application/json",
+                              "Authorization": "Bearer " + engine.key})
             resp = conn.getresponse()
             self.send_response(resp.status)
             self.send_header("Content-Type", resp.getheader("Content-Type", "application/json"))
